@@ -6,5 +6,5 @@
 .claude/credentials.json
 .claude/worktrees/
 
-# Ocak pipeline logs
+# Ocak pipeline
 logs/pipeline/

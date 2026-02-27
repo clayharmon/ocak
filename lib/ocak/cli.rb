@@ -8,6 +8,7 @@ require_relative 'commands/audit'
 require_relative 'commands/debt'
 require_relative 'commands/status'
 require_relative 'commands/clean'
+require_relative 'commands/resume'
 
 module Ocak
   module CLI
@@ -21,6 +22,7 @@ module Ocak
       register 'debt',   Ocak::Commands::Debt
       register 'status', Ocak::Commands::Status
       register 'clean',  Ocak::Commands::Clean
+      register 'resume', Ocak::Commands::Resume
     end
   end
 end

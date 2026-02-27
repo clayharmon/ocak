@@ -86,6 +86,8 @@ module Ocak
       format_command = @stack.format_command
       security_commands = @stack.security_commands
       setup_command = @stack.setup_command
+      monorepo = @stack.respond_to?(:monorepo) ? @stack.monorepo : false
+      packages = @stack.respond_to?(:packages) ? (@stack.packages || []) : []
       project_dir = @project_dir
 
       binding
@@ -156,6 +158,7 @@ module Ocak
       stdout, _, status = Open3.capture3(
         'claude', '-p',
         '--output-format', 'text',
+        '--model', 'haiku',
         '--allowedTools', 'Read,Glob,Grep',
         '--', prompt,
         chdir: @project_dir

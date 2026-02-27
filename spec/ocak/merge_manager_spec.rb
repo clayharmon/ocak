@@ -75,7 +75,7 @@ RSpec.describe Ocak::MergeManager do
       end
     end
 
-    context 'when rebase fails' do
+    context 'when rebase fails and merge also fails' do
       before do
         allow(Open3).to receive(:capture3)
           .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
@@ -86,17 +86,71 @@ RSpec.describe Ocak::MergeManager do
         allow(Open3).to receive(:capture3)
           .with('git', 'rebase', '--abort', chdir: worktree.path)
           .and_return(['', '', success_status])
+        # Merge fallback also fails
+        allow(Open3).to receive(:capture3)
+          .with('git', 'merge', 'origin/main', '--no-edit', chdir: worktree.path)
+          .and_return(['', 'conflict', failure_status])
+        # Conflict file list
+        allow(Open3).to receive(:capture3)
+          .with('git', 'diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
+          .and_return(["file.rb\n", '', success_status])
+        # Agent fails to resolve
+        allow(claude).to receive(:run_agent)
+          .and_return(Ocak::ClaudeRunner::AgentResult.new(success: false, output: 'Could not resolve'))
+        allow(Open3).to receive(:capture3)
+          .with('git', 'merge', '--abort', chdir: worktree.path)
+          .and_return(['', '', success_status])
       end
 
       it 'returns false' do
         expect(manager.merge(42, worktree)).to be false
       end
 
-      it 'aborts the rebase' do
+      it 'aborts the rebase before trying merge' do
         expect(Open3).to receive(:capture3)
           .with('git', 'rebase', '--abort', chdir: worktree.path)
 
         manager.merge(42, worktree)
+      end
+
+      it 'attempts merge as fallback' do
+        expect(Open3).to receive(:capture3)
+          .with('git', 'merge', 'origin/main', '--no-edit', chdir: worktree.path)
+
+        manager.merge(42, worktree)
+      end
+    end
+
+    context 'when rebase fails but merge succeeds' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: worktree.path)
+          .and_return(['', 'conflict', failure_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', '--abort', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        # Merge fallback succeeds
+        allow(Open3).to receive(:capture3)
+          .with('git', 'merge', 'origin/main', '--no-edit', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        # Tests pass
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        # Push succeeds
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)
+          .and_return(['', '', success_status])
+        # Merger agent succeeds
+        allow(claude).to receive(:run_agent)
+          .and_return(Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Merged'))
+      end
+
+      it 'returns true' do
+        expect(manager.merge(42, worktree)).to be true
       end
     end
 

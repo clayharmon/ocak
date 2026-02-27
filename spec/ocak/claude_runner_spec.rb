@@ -48,6 +48,44 @@ RSpec.describe Ocak::ClaudeRunner do
         expect(result.output).to eq('All good')
       end
 
+      it 'passes --model flag for agents with configured models' do
+        result_json = JSON.generate(type: 'result', subtype: 'success', result: 'Done',
+                                    total_cost_usd: 0.001, duration_ms: 1000, num_turns: 1)
+
+        allow(Ocak::ProcessRunner).to receive(:run) do |cmd, **opts|
+          expect(cmd).to include('--model', 'sonnet')
+          opts[:on_line]&.call(result_json)
+          [result_json, '', instance_double(Process::Status, success?: true)]
+        end
+
+        runner.run_agent('reviewer', 'Review code')
+      end
+
+      it 'does not pass --model flag for implementer (uses default)' do
+        allow(config).to receive(:agent_path).with('implementer')
+                                             .and_return(File.join(dir, '.claude', 'agents', 'reviewer.md'))
+
+        allow(Ocak::ProcessRunner).to receive(:run) do |cmd, **_opts|
+          expect(cmd).not_to include('--model')
+          ['', '', instance_double(Process::Status, success?: false)]
+        end
+
+        runner.run_agent('implementer', 'Implement code')
+      end
+
+      it 'allows model override via parameter' do
+        result_json = JSON.generate(type: 'result', subtype: 'success', result: 'Done',
+                                    total_cost_usd: 0.01, duration_ms: 1000, num_turns: 1)
+
+        allow(Ocak::ProcessRunner).to receive(:run) do |cmd, **opts|
+          expect(cmd).to include('--model', 'opus')
+          opts[:on_line]&.call(result_json)
+          [result_json, '', instance_double(Process::Status, success?: true)]
+        end
+
+        runner.run_agent('reviewer', 'Review code', model: 'opus')
+      end
+
       it 'reports failure when process exits non-zero' do
         allow(Ocak::ProcessRunner).to receive(:run)
           .and_return(['', 'error occurred', instance_double(Process::Status, success?: false)])
@@ -120,6 +158,61 @@ RSpec.describe Ocak::ClaudeRunner do
       result = described_class::AgentResult.new(success: true, output: nil)
       expect(result.blocking_findings?).to be false
       expect(result.warnings?).to be false
+    end
+  end
+
+  describe 'retry on transient failures' do
+    before do
+      agent_dir = File.join(dir, '.claude', 'agents')
+      FileUtils.mkdir_p(agent_dir)
+      File.write(File.join(agent_dir, 'reviewer.md'), '# Reviewer Agent')
+    end
+
+    it 'retries on connection reset errors' do
+      call_count = 0
+      result_json = JSON.generate(type: 'result', subtype: 'success', result: 'OK',
+                                  total_cost_usd: 0.01, duration_ms: 1000, num_turns: 1)
+
+      allow(Ocak::ProcessRunner).to receive(:run) do |_cmd, **opts|
+        call_count += 1
+        if call_count == 1
+          ['', 'connection reset by peer', instance_double(Process::Status, success?: false)]
+        else
+          opts[:on_line]&.call(result_json)
+          [result_json, '', instance_double(Process::Status, success?: true)]
+        end
+      end
+
+      # Use zero delays for test speed
+      stub_const('Ocak::ClaudeRunner::RETRY_DELAYS', [0, 0])
+      result = runner.run_agent('reviewer', 'Review code')
+      expect(result.success?).to be true
+      expect(call_count).to eq(2)
+    end
+
+    it 'does not retry on non-transient failures' do
+      call_count = 0
+      allow(Ocak::ProcessRunner).to receive(:run) do |_cmd, **_opts|
+        call_count += 1
+        ['', 'syntax error in agent', instance_double(Process::Status, success?: false)]
+      end
+
+      result = runner.run_agent('reviewer', 'Review code')
+      expect(result.success?).to be false
+      expect(call_count).to eq(1)
+    end
+
+    it 'gives up after max retries' do
+      call_count = 0
+      allow(Ocak::ProcessRunner).to receive(:run) do |_cmd, **_opts|
+        call_count += 1
+        ['', 'connection reset by peer', instance_double(Process::Status, success?: false)]
+      end
+
+      stub_const('Ocak::ClaudeRunner::RETRY_DELAYS', [0, 0])
+      result = runner.run_agent('reviewer', 'Review code')
+      expect(result.success?).to be false
+      expect(call_count).to eq(3) # initial + 2 retries
     end
   end
 

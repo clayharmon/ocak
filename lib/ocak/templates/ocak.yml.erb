@@ -32,6 +32,14 @@ pipeline:
   poll_interval: 60
   worktree_dir: ".claude/worktrees"
   log_dir: "logs/pipeline"
+  # cost_budget: 5.00  # Max USD per issue pipeline (uncomment to enable)
+
+# Safety — controls which issues the pipeline will process
+# Default (no config): only issues created by the current `gh` user
+safety:
+  allowed_authors: []            # Empty = current gh user only. Add usernames to allow others.
+  # require_comment: "auto-ready"  # Require this exact comment from an allowed author
+  max_issues_per_run: 5          # Circuit breaker: max issues processed per poll cycle
 
 # GitHub label state machine
 labels:
@@ -41,6 +49,7 @@ labels:
   failed: "pipeline-failed"
 
 # Pipeline steps — customize by adding/removing/reordering
+# Each step can optionally specify `model:` to override the default (haiku|sonnet|opus)
 steps:
   - agent: implementer
     role: implement
@@ -74,3 +83,14 @@ agents:
   pipeline: .claude/agents/pipeline.md
   planner: .claude/agents/planner.md
   auditor: .claude/agents/auditor.md
+<%- if defined?(monorepo) && monorepo -%>
+
+# Monorepo — detected packages/workspaces
+# Configure per-package test/lint commands here if needed
+monorepo:
+  detected: true
+  packages:
+<%- packages.each do |pkg| -%>
+    - "<%= pkg %>"
+<%- end -%>
+<%- end -%>

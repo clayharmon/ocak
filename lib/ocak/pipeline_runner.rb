@@ -3,13 +3,24 @@
 require 'json'
 require 'fileutils'
 require 'shellwords'
+require_relative 'pipeline_state'
+require_relative 'verification'
+require_relative 'planner'
 
 module Ocak
   class PipelineRunner
+    include Verification
+    include Planner
+
+    StepContext = Struct.new(:issue_number, :idx, :role, :result, :state, :logger, :chdir)
+
     def initialize(config:, options: {})
       @config = config
       @options = options
       @watch_formatter = options[:watch] ? WatchFormatter.new : nil
+      @shutting_down = false
+      @active_issues = []
+      @active_mutex = Mutex.new
     end
 
     def run
@@ -17,6 +28,23 @@ module Ocak
         run_single(@options[:single])
       else
         run_loop
+      end
+    end
+
+    def shutdown!
+      @shutting_down = true
+      logger = build_logger
+      logger.info('Graceful shutdown initiated...')
+
+      # Transition any in-progress issues back to ready
+      issues = IssueFetcher.new(config: @config, logger: logger)
+      @active_mutex.synchronize do
+        @active_issues.each do |issue_number|
+          logger.info("Returning issue ##{issue_number} to ready queue")
+          issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_ready)
+        rescue StandardError => e
+          logger.warn("Failed to reset issue ##{issue_number}: #{e.message}")
+        end
       end
     end
 
@@ -57,9 +85,14 @@ module Ocak
 
     def run_loop
       logger = build_logger
-      issues = IssueFetcher.new(config: @config)
+      issues = IssueFetcher.new(config: @config, logger: logger)
+
+      # Clean up stale worktrees from previous runs
+      cleanup_stale_worktrees(logger)
 
       loop do
+        break if @shutting_down
+
         logger.info("Checking for #{@config.label_ready} issues...")
         ready = issues.fetch_ready
 
@@ -80,6 +113,11 @@ module Ocak
     # --- Batch Processing ---
 
     def process_issues(ready_issues, logger:, issues:)
+      if ready_issues.size > @config.max_issues_per_run
+        logger.warn("Capping to #{@config.max_issues_per_run} issues (found #{ready_issues.size})")
+        ready_issues = ready_issues.first(@config.max_issues_per_run)
+      end
+
       claude = build_claude(logger)
       batches = plan_batches(ready_issues, logger: logger, claude: claude)
 
@@ -137,6 +175,7 @@ module Ocak
       claude = build_claude(logger)
       worktree = nil
 
+      @active_mutex.synchronize { @active_issues << issue_number }
       issues.transition(issue_number, from: @config.label_ready, to: @config.label_in_progress)
       worktree = worktrees.create(issue_number, setup_command: @config.setup_command)
       logger.info("Created worktree at #{worktree.path} (branch: #{worktree.branch})")
@@ -155,43 +194,84 @@ module Ocak
       logger.error("Unexpected error: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
       issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
       { issue_number: issue_number, success: false, worktree: worktree, error: e.message }
+    ensure
+      @active_mutex.synchronize { @active_issues.delete(issue_number) }
     end
 
     # --- Pipeline Execution ---
 
-    def run_pipeline(issue_number, logger:, claude:, chdir: nil)
+    def run_pipeline(issue_number, logger:, claude:, chdir: nil, skip_steps: [])
       chdir ||= @config.project_dir
       logger.info("=== Starting pipeline for issue ##{issue_number} ===")
 
-      state = { last_review_output: nil, had_fixes: false }
+      state = { last_review_output: nil, had_fixes: false, completed_steps: [], total_cost: 0.0 }
 
-      failure = run_pipeline_steps(issue_number, state, logger: logger, claude: claude, chdir: chdir)
+      failure = run_pipeline_steps(issue_number, state, logger: logger, claude: claude, chdir: chdir,
+                                                        skip_steps: skip_steps)
+      log_cost_summary(state[:total_cost], logger)
       return failure if failure
 
       failure = run_final_verification(logger: logger, claude: claude, chdir: chdir)
       return failure if failure
 
+      # Clean up state file on success
+      pipeline_state.delete(issue_number)
+
       logger.info("=== Pipeline complete for issue ##{issue_number} ===")
       { success: true, output: 'Pipeline completed successfully' }
     end
 
-    def run_pipeline_steps(issue_number, state, logger:, claude:, chdir:)
-      @config.steps.each do |step|
+    def run_pipeline_steps(issue_number, state, logger:, claude:, chdir:, skip_steps: [])
+      @config.steps.each_with_index do |step, idx|
         step = symbolize(step)
         role = step[:role].to_s
+
+        if skip_steps.include?(idx)
+          logger.info("Skipping #{role} (already completed)")
+          next
+        end
 
         next if skip_step?(step, state, logger)
 
         result = execute_step(step, issue_number, state[:last_review_output], logger: logger, claude: claude,
                                                                               chdir: chdir)
-        update_pipeline_state(role, result, state)
-
-        if !result.success? && %w[implement merge].include?(role)
-          logger.error("#{role} failed")
-          return { success: false, phase: role, output: result.output }
-        end
+        ctx = StepContext.new(issue_number, idx, role, result, state, logger, chdir)
+        failure = record_step_result(ctx)
+        return failure if failure
       end
       nil
+    end
+
+    def record_step_result(ctx)
+      update_pipeline_state(ctx.role, ctx.result, ctx.state)
+      ctx.state[:completed_steps] << ctx.idx
+      ctx.state[:total_cost] += ctx.result.cost_usd.to_f
+      save_step_progress(ctx)
+
+      check_step_failure(ctx) || check_cost_budget(ctx.state, ctx.logger)
+    end
+
+    def save_step_progress(ctx)
+      pipeline_state.save(ctx.issue_number,
+                          completed_steps: ctx.state[:completed_steps],
+                          worktree_path: ctx.chdir,
+                          branch: current_branch(ctx.chdir))
+    end
+
+    def check_step_failure(ctx)
+      return nil if ctx.result.success? || !%w[implement merge].include?(ctx.role)
+
+      ctx.logger.error("#{ctx.role} failed")
+      { success: false, phase: ctx.role, output: ctx.result.output }
+    end
+
+    def check_cost_budget(state, logger)
+      return nil unless @config.cost_budget && state[:total_cost] > @config.cost_budget
+
+      cost = format('%.2f', state[:total_cost])
+      budget = format('%.2f', @config.cost_budget)
+      logger.error("Cost budget exceeded ($#{cost}/$#{budget})")
+      { success: false, phase: 'budget', output: "Cost budget exceeded: $#{cost}" }
     end
 
     def skip_step?(step, state, logger)
@@ -246,131 +326,24 @@ module Ocak
       { success: false, phase: 'final-verify', output: result[:output] }
     end
 
-    def build_step_prompt(role, issue_number, review_output)
-      case role
-      when 'implement'
-        "Implement GitHub issue ##{issue_number}"
-      when 'review', 'verify'
-        "Review the changes for GitHub issue ##{issue_number}. Run: git diff main"
-      when 'fix'
-        "Fix these review findings for issue ##{issue_number}:\n\n#{review_output}"
-      when 'security'
-        "Security review changes for GitHub issue ##{issue_number}. Run: git diff main"
-      when 'document'
-        "Add documentation for changes in GitHub issue ##{issue_number}"
-      when 'audit'
-        "Audit the changed files for issue ##{issue_number}. Run: git diff main --name-only"
-      when 'merge', 'create_pr'
-        "Create a PR, merge it, and close issue ##{issue_number}"
-      else
-        "Run #{role} for GitHub issue ##{issue_number}"
-      end
+    # --- Cost ---
+
+    def log_cost_summary(total_cost, logger)
+      return if total_cost.zero?
+
+      budget = @config.cost_budget
+      budget_str = budget ? " / $#{format('%.2f', budget)} budget" : ''
+      logger.info("Pipeline cost: $#{format('%.4f', total_cost)}#{budget_str}")
     end
 
-    def run_final_checks(logger, chdir:)
-      failures = []
-      output_parts = []
+    # --- Cleanup ---
 
-      # Run test command on full suite
-      if @config.test_command
-        stdout, stderr, status = Open3.capture3(*Shellwords.shellsplit(@config.test_command), chdir: chdir)
-        unless status.success?
-          failures << @config.test_command
-          output_parts << "=== #{@config.test_command} ===\n#{stdout}\n#{stderr}"
-        end
-      end
-
-      # Run lint check (no auto-fix) scoped to changed files only
-      if @config.lint_check_command
-        lint_output = run_scoped_lint(logger, chdir: chdir)
-        if lint_output
-          failures << @config.lint_check_command
-          output_parts << lint_output
-        end
-      end
-
-      if failures.empty?
-        logger.info('All checks passed')
-        { success: true }
-      else
-        logger.warn("Checks failed: #{failures.join(', ')}")
-        { success: false, failures: failures, output: output_parts.join("\n\n") }
-      end
-    end
-
-    def run_scoped_lint(logger, chdir:)
-      # Get files changed relative to main
-      changed_stdout, = Open3.capture3('git', 'diff', '--name-only', 'main', chdir: chdir)
-      changed_files = changed_stdout.lines.map(&:strip).reject(&:empty?)
-
-      # Filter to lintable files based on language
-      extensions = lint_extensions_for(@config.language)
-      lintable = changed_files.select { |f| extensions.any? { |ext| f.end_with?(ext) } }
-
-      if lintable.empty?
-        logger.info('No changed files to lint')
-        return nil
-      end
-
-      cmd_parts = Shellwords.shellsplit(@config.lint_check_command)
-      cmd_parts << '--force-exclusion' if @config.lint_check_command.include?('rubocop')
-      cmd_parts.concat(lintable)
-
-      stdout, stderr, status = Open3.capture3(*cmd_parts, chdir: chdir)
-      return nil if status.success?
-
-      "=== #{@config.lint_check_command} (#{lintable.size} files) ===\n#{stdout}\n#{stderr}"
-    end
-
-    def lint_extensions_for(language)
-      case language
-      when 'ruby'                    then %w[.rb .rake .gemspec]
-      when 'typescript'              then %w[.ts .tsx]
-      when 'javascript'              then %w[.js .jsx]
-      when 'python'                  then %w[.py]
-      when 'rust'                    then %w[.rs]
-      when 'go'                      then %w[.go]
-      when 'elixir'                  then %w[.ex .exs]
-      when 'java'                    then %w[.java]
-      else                                %w[.rb .ts .tsx .js .jsx .py .rs .go]
-      end
-    end
-
-    # --- Planner ---
-
-    def plan_batches(issues, logger:, claude:)
-      return sequential_batches(issues) if issues.size <= 1
-
-      issue_json = JSON.generate(issues.map { |i| { number: i['number'], title: i['title'] } })
-      result = claude.run_agent(
-        'planner',
-        "Analyze these issues and output parallelization batches as JSON:\n\n#{issue_json}"
-      )
-
-      unless result.success?
-        logger.warn('Planner failed, falling back to sequential')
-        return sequential_batches(issues)
-      end
-
-      parse_planner_output(result.output, issues, logger)
-    end
-
-    def parse_planner_output(output, issues, logger)
-      json_match = output.match(/\{[\s\S]*"batches"[\s\S]*\}/)
-      if json_match
-        parsed = JSON.parse(json_match[0])
-        parsed['batches']
-      else
-        logger.warn('Could not parse planner output, falling back to sequential')
-        sequential_batches(issues)
-      end
-    rescue JSON::ParserError => e
-      logger.warn("JSON parse error from planner: #{e.message}")
-      sequential_batches(issues)
-    end
-
-    def sequential_batches(issues)
-      issues.map.with_index { |i, idx| { 'batch' => idx + 1, 'issues' => [i] } }
+    def cleanup_stale_worktrees(logger)
+      worktrees = WorktreeManager.new(config: @config)
+      removed = worktrees.clean_stale
+      removed.each { |path| logger.info("Cleaned stale worktree: #{path}") }
+    rescue StandardError => e
+      logger.warn("Stale worktree cleanup failed: #{e.message}")
     end
 
     # --- Helpers ---
@@ -384,6 +357,17 @@ module Ocak
 
     def build_claude(logger)
       ClaudeRunner.new(config: @config, logger: logger, watch: @watch_formatter)
+    end
+
+    def pipeline_state
+      @pipeline_state ||= PipelineState.new(log_dir: File.join(@config.project_dir, @config.log_dir))
+    end
+
+    def current_branch(chdir)
+      stdout, = Open3.capture3('git', 'rev-parse', '--abbrev-ref', 'HEAD', chdir: chdir)
+      stdout.strip
+    rescue StandardError
+      nil
     end
 
     def symbolize(hash)

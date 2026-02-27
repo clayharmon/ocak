@@ -70,13 +70,54 @@ module Ocak
       git('fetch', 'origin', 'main', chdir: worktree.path)
       _, stderr, status = git('rebase', 'origin/main', chdir: worktree.path)
 
-      unless status.success?
-        @logger.warn("Rebase conflict, aborting: #{stderr}")
-        git('rebase', '--abort', chdir: worktree.path)
+      return true if status.success?
+
+      @logger.warn("Rebase conflict, aborting rebase: #{stderr}")
+      git('rebase', '--abort', chdir: worktree.path)
+
+      # Fall back to merge strategy
+      @logger.info('Attempting merge strategy instead...')
+      _, merge_stderr, merge_status = git('merge', 'origin/main', '--no-edit', chdir: worktree.path)
+
+      return true if merge_status.success?
+
+      # Merge also has conflicts — try to resolve via agent
+      @logger.warn("Merge conflict, attempting agent resolution: #{merge_stderr}")
+      resolve_conflicts_via_agent(worktree)
+    end
+
+    def resolve_conflicts_via_agent(worktree)
+      # Get list of conflicting files
+      stdout, = git('diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
+      conflicting = stdout.lines.map(&:strip).reject(&:empty?)
+
+      if conflicting.empty?
+        @logger.warn('No conflicting files found, aborting merge')
+        git('merge', '--abort', chdir: worktree.path)
         return false
       end
 
-      true
+      result = @claude.run_agent(
+        'implementer',
+        "Resolve these merge conflicts. Conflicting files:\n#{conflicting.join("\n")}\n\n" \
+        'Open each file, find conflict markers (<<<<<<< ======= >>>>>>>), and resolve them. ' \
+        'Then run `git add` on each resolved file.',
+        chdir: worktree.path
+      )
+
+      if result.success?
+        # Check if all conflicts resolved
+        remaining, = git('diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
+        if remaining.strip.empty?
+          git('commit', '--no-edit', chdir: worktree.path)
+          @logger.info('Merge conflicts resolved by agent')
+          return true
+        end
+      end
+
+      @logger.error('Agent could not resolve merge conflicts')
+      git('merge', '--abort', chdir: worktree.path)
+      false
     end
 
     def verify_tests(worktree)

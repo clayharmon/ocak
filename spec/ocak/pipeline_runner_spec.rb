@@ -14,6 +14,8 @@ RSpec.describe Ocak::PipelineRunner do
                     log_dir: 'logs/pipeline',
                     poll_interval: 1,
                     max_parallel: 2,
+                    max_issues_per_run: 5,
+                    cost_budget: nil,
                     worktree_dir: '.claude/worktrees',
                     test_command: nil,
                     lint_command: nil,
@@ -30,6 +32,7 @@ RSpec.describe Ocak::PipelineRunner do
   let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, log_file_path: nil) }
   let(:claude) { instance_double(Ocak::ClaudeRunner) }
   let(:issues) { instance_double(Ocak::IssueFetcher) }
+  let(:pipeline_state) { instance_double(Ocak::PipelineState, save: nil, delete: nil, load: nil) }
 
   let(:success_result) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Done') }
   let(:failure_result) { Ocak::ClaudeRunner::AgentResult.new(success: false, output: 'Error') }
@@ -38,6 +41,10 @@ RSpec.describe Ocak::PipelineRunner do
   before do
     allow(Ocak::PipelineLogger).to receive(:new).and_return(logger)
     allow(Ocak::ClaudeRunner).to receive(:new).and_return(claude)
+    allow(Ocak::PipelineState).to receive(:new).and_return(pipeline_state)
+    allow(Open3).to receive(:capture3)
+      .with('git', 'rev-parse', '--abbrev-ref', 'HEAD', chdir: anything)
+      .and_return(["main\n", '', instance_double(Process::Status, success?: true)])
     allow(FileUtils).to receive(:mkdir_p)
   end
 
@@ -128,6 +135,21 @@ RSpec.describe Ocak::PipelineRunner do
 
   describe 'planner' do
     subject(:runner) { described_class.new(config: config, options: { once: true }) }
+
+    let(:worktree) do
+      Ocak::WorktreeManager::Worktree.new(
+        path: '/project/.claude/worktrees/issue-1',
+        branch: 'auto/issue-1-abc',
+        issue_number: 1
+      )
+    end
+    let(:worktree_manager) do
+      instance_double(Ocak::WorktreeManager, clean_stale: [], create: worktree, remove: nil)
+    end
+
+    before do
+      allow(Ocak::WorktreeManager).to receive(:new).and_return(worktree_manager)
+    end
 
     it 'falls back to sequential batches when planner fails' do
       allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)

@@ -183,6 +183,50 @@ RSpec.describe Ocak::Config do
     end
   end
 
+  describe 'safety defaults' do
+    subject(:config) { described_class.new({}, dir) }
+
+    it 'defaults allowed_authors to empty array' do
+      expect(config.allowed_authors).to eq([])
+    end
+
+    it 'defaults require_comment to nil' do
+      expect(config.require_comment).to be_nil
+    end
+
+    it 'defaults max_issues_per_run to 5' do
+      expect(config.max_issues_per_run).to eq(5)
+    end
+
+    it 'defaults cost_budget to nil' do
+      expect(config.cost_budget).to be_nil
+    end
+  end
+
+  describe 'safety overrides' do
+    subject(:config) do
+      described_class.new({
+                            safety: {
+                              allowed_authors: %w[alice bob],
+                              require_comment: 'auto-ready',
+                              max_issues_per_run: 10
+                            }
+                          }, dir)
+    end
+
+    it 'returns configured allowed_authors' do
+      expect(config.allowed_authors).to eq(%w[alice bob])
+    end
+
+    it 'returns configured require_comment' do
+      expect(config.require_comment).to eq('auto-ready')
+    end
+
+    it 'returns configured max_issues_per_run' do
+      expect(config.max_issues_per_run).to eq(10)
+    end
+  end
+
   describe 'validation' do
     it 'raises on non-hash data' do
       expect { described_class.new('invalid', dir) }.to raise_error(Ocak::Config::ConfigError)

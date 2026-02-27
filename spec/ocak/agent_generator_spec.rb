@@ -13,7 +13,10 @@ RSpec.describe Ocak::AgentGenerator do
       test_command: 'bundle exec rspec',
       lint_command: 'bundle exec rubocop -A',
       format_command: nil,
-      security_commands: ['bundle exec brakeman -q']
+      security_commands: ['bundle exec brakeman -q'],
+      setup_command: 'bundle install',
+      monorepo: false,
+      packages: []
     )
   end
 

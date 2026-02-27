@@ -13,6 +13,9 @@ module Ocak
 
       option :force, type: :boolean, default: false, desc: 'Overwrite existing configuration'
       option :no_ai, type: :boolean, default: false, desc: 'Skip AI-powered agent customization'
+      option :config_only, type: :boolean, default: false, desc: 'Only generate config, hooks, and settings'
+      option :skip_agents, type: :boolean, default: false, desc: 'Skip agent generation'
+      option :skip_skills, type: :boolean, default: false, desc: 'Skip skill generation'
 
       def call(**options)
         project_dir = Dir.pwd
@@ -27,38 +30,46 @@ module Ocak
         print_stack(stack)
 
         generator = AgentGenerator.new(
-          stack: stack,
-          project_dir: project_dir,
-          use_ai: !options[:no_ai],
-          logger: init_logger
+          stack: stack, project_dir: project_dir, use_ai: !options[:no_ai], logger: init_logger
         )
 
-        # Generate config
-        generator.generate_config(File.join(project_dir, 'ocak.yml'))
-
-        # Generate agents
-        agents_dir = File.join(project_dir, '.claude', 'agents')
-        generator.generate_agents(agents_dir)
-
-        # Generate skills
-        skills_dir = File.join(project_dir, '.claude', 'skills')
-        generator.generate_skills(skills_dir)
-
-        # Generate hooks
-        hooks_dir = File.join(project_dir, '.claude', 'hooks')
-        generator.generate_hooks(hooks_dir)
-
-        # Update settings.json
+        generate_files(generator, project_dir, options)
         update_settings(project_dir, stack)
-
-        # Update .gitignore
         update_gitignore(project_dir)
 
         puts ''
-        print_summary(project_dir, stack)
+        print_summary(project_dir, stack, options)
       end
 
       private
+
+      def generate_files(generator, project_dir, options)
+        generator.generate_config(File.join(project_dir, 'ocak.yml'))
+        generate_agents(generator, project_dir, options)
+        generate_skills(generator, project_dir, options)
+        generator.generate_hooks(File.join(project_dir, '.claude', 'hooks'))
+      end
+
+      def generate_agents(generator, project_dir, options)
+        return if options[:config_only] || options[:skip_agents]
+
+        agents_dir = File.join(project_dir, '.claude', 'agents')
+        if agents_exist?(agents_dir) && !options[:force]
+          puts '  Existing agents found in .claude/agents/ — skipping (use --force to overwrite)'
+        else
+          generator.generate_agents(agents_dir)
+        end
+      end
+
+      def generate_skills(generator, project_dir, options)
+        return if options[:config_only] || options[:skip_skills]
+
+        generator.generate_skills(File.join(project_dir, '.claude', 'skills'))
+      end
+
+      def agents_exist?(agents_dir)
+        Dir.exist?(agents_dir) && Dir.glob(File.join(agents_dir, '*.md')).any?
+      end
 
       def print_stack(stack)
         puts "  Language:  #{stack.language}"
@@ -66,6 +77,7 @@ module Ocak
         puts "  Tests:     #{stack.test_command || 'none detected'}"
         puts "  Lint:      #{stack.lint_command || 'none detected'}"
         puts "  Security:  #{stack.security_commands.empty? ? 'none detected' : stack.security_commands.join(', ')}"
+        puts "  Monorepo:  yes (#{stack.packages.size} packages)" if stack.respond_to?(:monorepo) && stack.monorepo
         puts ''
       end
 
@@ -162,13 +174,15 @@ module Ocak
         puts '  Updated .gitignore'
       end
 
-      def print_summary(_project_dir, _stack)
+      def print_summary(_project_dir, _stack, options)
         puts 'Ocak initialized successfully!'
         puts ''
         puts 'Created:'
         puts '  ocak.yml                          — pipeline configuration'
-        puts '  .claude/agents/                    — 8 pipeline agents'
-        puts '  .claude/skills/                    — 4 interactive skills'
+        unless options[:config_only]
+          puts '  .claude/agents/                    — 8 pipeline agents' unless options[:skip_agents]
+          puts '  .claude/skills/                    — 4 interactive skills' unless options[:skip_skills]
+        end
         puts '  .claude/hooks/                     — lint + test hooks'
         puts '  .claude/settings.json              — permissions & hooks config'
         puts ''
@@ -187,7 +201,6 @@ module Ocak
       end
 
       def init_logger
-        # Simple logger that prints to stdout during init
         @init_logger ||= Object.new.tap do |l|
           def l.info(msg)
             puts "  #{msg}"

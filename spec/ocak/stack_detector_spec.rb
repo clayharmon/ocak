@@ -221,6 +221,77 @@ RSpec.describe Ocak::StackDetector do
     end
   end
 
+  context 'with a monorepo (npm workspaces)' do
+    before do
+      write_file('package.json', JSON.generate(
+                                   name: 'monorepo',
+                                   workspaces: ['packages/*'],
+                                   devDependencies: { 'vitest' => '^1.0' }
+                                 ))
+      write_file('tsconfig.json', '{}')
+      write_file('packages/core/package.json', '{}')
+      write_file('packages/web/package.json', '{}')
+    end
+
+    it 'detects monorepo' do
+      expect(result.monorepo).to be true
+    end
+
+    it 'lists packages' do
+      expect(result.packages).to contain_exactly('packages/core', 'packages/web')
+    end
+  end
+
+  context 'with a monorepo (Cargo workspace)' do
+    before do
+      write_file('Cargo.toml', <<~TOML)
+        [workspace]
+        members = ["crates/core", "crates/api"]
+      TOML
+      FileUtils.mkdir_p(File.join(dir, 'crates', 'core'))
+      FileUtils.mkdir_p(File.join(dir, 'crates', 'api'))
+    end
+
+    it 'detects monorepo' do
+      expect(result.monorepo).to be true
+    end
+
+    it 'lists packages' do
+      expect(result.packages).to contain_exactly('crates/core', 'crates/api')
+    end
+  end
+
+  context 'with a monorepo (convention-based)' do
+    before do
+      write_file('package.json', JSON.generate(name: 'root'))
+      write_file('tsconfig.json', '{}')
+      FileUtils.mkdir_p(File.join(dir, 'apps', 'web'))
+      FileUtils.mkdir_p(File.join(dir, 'apps', 'api'))
+    end
+
+    it 'detects monorepo via apps/ convention' do
+      expect(result.monorepo).to be true
+    end
+
+    it 'lists apps' do
+      expect(result.packages).to contain_exactly('apps/web', 'apps/api')
+    end
+  end
+
+  context 'with a non-monorepo project' do
+    before do
+      write_file('Gemfile', 'gem "rails"')
+    end
+
+    it 'does not detect monorepo' do
+      expect(result.monorepo).to be false
+    end
+
+    it 'returns empty packages' do
+      expect(result.packages).to eq([])
+    end
+  end
+
   context 'with an empty directory' do
     it 'returns unknown language' do
       expect(result.language).to eq('unknown')

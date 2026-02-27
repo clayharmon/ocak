@@ -29,7 +29,29 @@ module Ocak
       'planner' => 'Read,Glob,Grep,Bash'
     }.freeze
 
+    AGENT_MODELS = {
+      'planner' => 'haiku',
+      'reviewer' => 'sonnet',
+      'security-reviewer' => 'sonnet',
+      'auditor' => 'sonnet',
+      'documenter' => 'sonnet',
+      'merger' => 'sonnet',
+      'implementer' => nil,
+      'pipeline' => nil
+    }.freeze
+
     TIMEOUT = 600 # 10 minutes per agent invocation
+    MAX_RETRIES = 2
+    RETRY_DELAYS = [5, 15].freeze
+
+    TRANSIENT_PATTERNS = [
+      /connection.*reset/i,
+      /timed?\s*out/i,
+      /ECONNREFUSED/,
+      /rate\s*limit/i,
+      /503|502|429/,
+      /overloaded/i
+    ].freeze
 
     def initialize(config:, logger:, watch: nil)
       @config = config
@@ -37,7 +59,7 @@ module Ocak
       @watch = watch
     end
 
-    def run_agent(agent_name, prompt, chdir: nil)
+    def run_agent(agent_name, prompt, chdir: nil, model: nil, retries: MAX_RETRIES)
       chdir ||= @config.project_dir
       agent_file = @config.agent_path(agent_name)
 
@@ -49,22 +71,16 @@ module Ocak
       instructions = File.read(agent_file)
       full_prompt = "#{instructions}\n\n---\n\nTask: #{prompt}"
       allowed_tools = AGENT_TOOLS.fetch(agent_name, 'Read,Glob,Grep,Bash')
+      agent_model = model || AGENT_MODELS[agent_name]
 
-      @logger.info("Running agent: #{agent_name}", agent: agent_name)
-
-      parser = StreamParser.new(agent_name, @logger)
-      line_handler = build_line_handler(agent_name, parser)
-
-      _, stderr, status = run_claude(full_prompt, allowed_tools, chdir: chdir, on_line: line_handler)
-
-      build_agent_result(parser, status, stderr, agent_name)
+      run_with_retry(agent_name, full_prompt, allowed_tools, agent_model, chdir: chdir, retries: retries)
     end
 
     # Run a raw prompt without agent file (for planner, init analysis, etc.)
-    def run_prompt(prompt, allowed_tools: 'Read,Glob,Grep,Bash', chdir: nil)
+    def run_prompt(prompt, allowed_tools: 'Read,Glob,Grep,Bash', chdir: nil, model: nil)
       chdir ||= @config.project_dir
 
-      stdout, _, status = run_claude(prompt, allowed_tools, chdir: chdir)
+      stdout, _, status = run_claude(prompt, allowed_tools, chdir: chdir, model: model)
 
       # Try to extract result from stream-json, fall back to raw stdout
       result_text = extract_result_from_stream(stdout) || stdout
@@ -74,6 +90,33 @@ module Ocak
     end
 
     private
+
+    def run_with_retry(agent_name, full_prompt, allowed_tools, model, chdir:, retries:)
+      attempts = 0
+
+      loop do
+        @logger.info("Running agent: #{agent_name}#{" (model: #{model})" if model}", agent: agent_name)
+
+        parser = StreamParser.new(agent_name, @logger)
+        line_handler = build_line_handler(agent_name, parser)
+
+        _, stderr, status = run_claude(full_prompt, allowed_tools, chdir: chdir, on_line: line_handler, model: model)
+        result = build_agent_result(parser, status, stderr, agent_name)
+
+        return result if result.success? || attempts >= retries || !transient_failure?(result, stderr.to_s)
+
+        attempts += 1
+        delay = RETRY_DELAYS[attempts - 1] || RETRY_DELAYS.last
+        @logger.warn("Transient failure, retrying #{agent_name} (attempt #{attempts + 1}/#{retries + 1}) " \
+                     "after #{delay}s...", agent: agent_name)
+        sleep delay
+      end
+    end
+
+    def transient_failure?(result, stderr)
+      combined = "#{result.output}\n#{stderr}"
+      TRANSIENT_PATTERNS.any? { |pat| combined.match?(pat) }
+    end
 
     def build_agent_result(parser, status, stderr, agent_name)
       output = parser.result_text || ''
@@ -100,14 +143,15 @@ module Ocak
       end
     end
 
-    def run_claude(prompt, allowed_tools, chdir:, on_line: nil)
+    def run_claude(prompt, allowed_tools, chdir:, on_line: nil, model: nil)
       cmd = [
         'claude', '-p',
         '--verbose',
         '--output-format', 'stream-json',
-        '--allowedTools', allowed_tools,
-        '--', prompt
+        '--allowedTools', allowed_tools
       ]
+      cmd.push('--model', model) if model
+      cmd.push('--', prompt)
 
       ProcessRunner.run(cmd, chdir: chdir, timeout: TIMEOUT, on_line: on_line)
     end

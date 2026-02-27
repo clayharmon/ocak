@@ -1,0 +1,51 @@
+# frozen_string_literal: true
+
+require 'json'
+require 'fileutils'
+
+module Ocak
+  class PipelineState
+    def initialize(log_dir:)
+      @log_dir = log_dir
+    end
+
+    def save(issue_number, completed_steps:, worktree_path: nil, branch: nil)
+      FileUtils.mkdir_p(@log_dir)
+      File.write(state_path(issue_number), JSON.pretty_generate({
+                                                                  issue_number: issue_number,
+                                                                  completed_steps: completed_steps,
+                                                                  worktree_path: worktree_path,
+                                                                  branch: branch,
+                                                                  updated_at: Time.now.iso8601
+                                                                }))
+    end
+
+    def load(issue_number)
+      path = state_path(issue_number)
+      return nil unless File.exist?(path)
+
+      JSON.parse(File.read(path), symbolize_names: true)
+    rescue JSON::ParserError
+      nil
+    end
+
+    def delete(issue_number)
+      path = state_path(issue_number)
+      FileUtils.rm_f(path)
+    end
+
+    def list
+      Dir.glob(File.join(@log_dir, 'issue-*-state.json')).filter_map do |path|
+        JSON.parse(File.read(path), symbolize_names: true)
+      rescue JSON::ParserError
+        nil
+      end
+    end
+
+    private
+
+    def state_path(issue_number)
+      File.join(@log_dir, "issue-#{issue_number}-state.json")
+    end
+  end
+end
