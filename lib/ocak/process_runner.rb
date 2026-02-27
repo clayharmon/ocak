@@ -49,7 +49,8 @@ module Ocak
       Process.kill('TERM', pid)
       sleep 2
       Process.kill('KILL', pid)
-    rescue Errno::ESRCH
+    rescue Errno::ESRCH => e
+      warn("Process already exited during kill: #{e.message}")
       nil
     end
 
@@ -65,7 +66,8 @@ module Ocak
         else
           ctx[:stderr] << chunk
         end
-      rescue EOFError
+      rescue EOFError => e
+        warn("Stream EOF for subprocess IO: #{e.message}")
         readers.delete(io)
       end
     end

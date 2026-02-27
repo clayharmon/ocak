@@ -150,7 +150,8 @@ module Ocak
     def claude_available?
       _, _, status = Open3.capture3('which', 'claude')
       status.success?
-    rescue Errno::ENOENT
+    rescue Errno::ENOENT => e
+      @logger&.warn("Claude CLI not found: #{e.message}")
       false
     end
 
@@ -164,7 +165,8 @@ module Ocak
         chdir: @project_dir
       )
       status.success? ? stdout : nil
-    rescue Errno::ENOENT
+    rescue Errno::ENOENT => e
+      @logger&.warn("Failed to run Claude prompt: #{e.message}")
       nil
     end
   end

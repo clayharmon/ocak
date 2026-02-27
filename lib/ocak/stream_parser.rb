@@ -42,7 +42,8 @@ module Ocak
       when 'result'    then parse_result(data)
       else []
       end
-    rescue JSON::ParserError
+    rescue JSON::ParserError => e
+      @logger.debug("Failed to parse stream JSON line: #{e.message}")
       []
     end
 

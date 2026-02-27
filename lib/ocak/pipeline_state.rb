@@ -25,7 +25,8 @@ module Ocak
       return nil unless File.exist?(path)
 
       JSON.parse(File.read(path), symbolize_names: true)
-    rescue JSON::ParserError
+    rescue JSON::ParserError => e
+      warn("Failed to parse pipeline state for issue ##{issue_number}: #{e.message}")
       nil
     end
 
@@ -37,7 +38,8 @@ module Ocak
     def list
       Dir.glob(File.join(@log_dir, 'issue-*-state.json')).filter_map do |path|
         JSON.parse(File.read(path), symbolize_names: true)
-      rescue JSON::ParserError
+      rescue JSON::ParserError => e
+        warn("Failed to parse pipeline state file #{path}: #{e.message}")
         nil
       end
     end
