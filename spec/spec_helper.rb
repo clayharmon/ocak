@@ -9,6 +9,7 @@ require 'ocak/merge_manager'
 require 'ocak/process_runner'
 require 'ocak/stream_parser'
 require 'ocak/claude_runner'
+require 'ocak/pipeline_executor'
 require 'ocak/logger'
 
 RSpec.configure do |config|

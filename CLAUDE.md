@@ -11,7 +11,8 @@ lib/ocak/
 ├── config.rb              # Loads and validates ocak.yml, provides typed accessors
 ├── stack_detector.rb      # Detects project language, framework, test/lint/security tools
 ├── agent_generator.rb     # Generates agent/skill/hook files from ERB templates, optionally enhanced via claude -p
-├── pipeline_runner.rb     # Core pipeline loop: poll → plan → worktree → run agents → merge
+├── pipeline_runner.rb     # Orchestration: poll → plan → worktree → delegate to executor → merge
+├── pipeline_executor.rb   # Step execution: run_pipeline, execute_step, conditions, cost tracking
 ├── claude_runner.rb       # Wraps `claude -p` with stream-json parsing (StreamParser, AgentResult)
 ├── issue_fetcher.rb       # GitHub CLI wrapper for issue listing, labeling, commenting
 ├── worktree_manager.rb    # Git worktree create/remove/list/clean
