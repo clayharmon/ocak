@@ -12,3 +12,7 @@
 .claude/statsig/
 .claude/credentials.json
 /spec/examples.txt
+
+# Ocak / Claude Code
+.claude/worktrees/
+logs/pipeline/

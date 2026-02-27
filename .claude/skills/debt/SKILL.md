@@ -1,0 +1,104 @@
+---
+name: debt
+description: Technical debt tracker — TODOs, suppressed rules, skipped tests, churn hotspots
+disable-model-invocation: true
+---
+
+# /debt — Technical Debt Tracker
+
+Tracks and ranks technical debt across the codebase. Combines static markers (TODOs, suppressions), test gaps, and git churn to identify the riskiest areas.
+
+## Process
+
+### Phase 1: Collect Debt Markers
+
+#### TODO/FIXME/HACK Comments
+
+```bash
+grep -rn "TODO\|FIXME\|HACK\|XXX\|OPTIMIZE\|REFACTOR" \
+  --include="*.rb" \
+  --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=.git --exclude-dir=target \
+  . 2>/dev/null || true
+```
+
+For each marker, read the surrounding context (3-5 lines) to understand what the debt is.
+
+#### Suppressed Linter Rules
+
+```bash
+grep -rn "rubocop:disable" --include="*.rb" . 2>/dev/null || true
+```
+
+#### Skipped/Pending Tests
+
+```bash
+grep -rn "skip\b\|pending\b" --include="*_test.rb" --include="*_spec.rb" . 2>/dev/null || true
+```
+
+### Phase 2: Git Churn Analysis
+
+Find files that change most frequently — high churn signals instability or ongoing debt.
+
+```bash
+# Top 30 most frequently changed files in the last 6 months
+git log --since="6 months ago" --name-only --pretty=format: | \
+  grep -v '^$' | sort | uniq -c | sort -rn | head -30
+```
+
+### Phase 3: Test Coverage Cross-Reference
+
+For the top 20 highest-churn files, check if they have corresponding tests.
+
+### Phase 4: Risk Scoring
+
+Score each debt item on a 1-10 scale based on:
+
+| Factor | Weight | Description |
+|--------|--------|-------------|
+| **Churn** | 3x | Files changed 10+ times in 6 months = high churn |
+| **Test coverage** | 3x | No tests = maximum risk |
+| **Suppressed rules** | 2x | Disabled lint/type checks = hidden issues |
+| **Age** | 1x | Old TODOs (> 3 months) = likely forgotten |
+| **Blast radius** | 1x | Shared code (base classes, lib) = wider impact |
+
+### Phase 5: Output
+
+```
+# Technical Debt Report
+
+**Total debt items**: N
+
+## Risk-Ranked Debt
+
+### 1. `path/to/file` — Risk: 9/10
+**Churn**: N changes in 6 months
+**Tests**: N tests (N public methods untested)
+**Suppressions**: N
+**Markers**: N TODOs, N HACKs
+**Details**:
+- Line 42: `TODO: description` (added date)
+- Line 78: suppressed lint rule — reason
+
+## Debt by Category
+
+| Category | Count | Oldest |
+|----------|-------|--------|
+| TODO | N | [date] |
+| FIXME | N | [date] |
+| HACK | N | [date] |
+| Suppressed rules | N | - |
+| Skipped tests | N | - |
+| Untested high-churn files | N | - |
+
+## Churn Hotspots
+Files with high churn and low test coverage:
+- `path/to/file` — N changes, N tests
+```
+
+### Phase 6: Issue Generation
+
+After presenting the report, offer:
+
+> The top N items are high-risk debt. Want me to generate GitHub issues for them?
+
+If accepted, generate one issue per high-risk item using the /design format with the `auto-ready` label.

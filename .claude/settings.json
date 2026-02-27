@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bundle exec rubocop*)",
+      "Bash(bundle exec rspec*)",
+      "Bash(bundle exec rake test*)",
+      "Bash(gh issue*)",
+      "Bash(gh pr*)",
+      "Bash(gh label*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/post-edit-lint.sh"
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/task-completed-test.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
