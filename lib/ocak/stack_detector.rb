@@ -1,12 +1,137 @@
 # frozen_string_literal: true
 
 require 'json'
+require_relative 'monorepo_detector'
 
 module Ocak
   class StackDetector
+    include MonorepoDetector
+
     Result = Struct.new(:language, :framework, :test_command, :lint_command,
                         :format_command, :security_commands, :setup_command,
                         :monorepo, :packages)
+    LANGUAGE_RULES = [
+      ['ruby',       ['Gemfile']],
+      ['typescript', ['tsconfig.json']],
+      ['javascript', ['package.json']],
+      ['python',     ['pyproject.toml', 'setup.py', 'requirements.txt']],
+      ['rust',       ['Cargo.toml']],
+      ['go',         ['go.mod']],
+      ['java',       ['pom.xml', 'build.gradle']],
+      ['elixir',     ['mix.exs']]
+    ].freeze
+    FRAMEWORK_RULES = {
+      'ruby' => [
+        [:dep_in_file, 'Gemfile', 'rails', 'rails'],
+        [:dep_in_file, 'Gemfile', 'sinatra', 'sinatra'],
+        [:dep_in_file, 'Gemfile', 'hanami', 'hanami']
+      ],
+      'javascript' => [
+        [:pkg_has, 'next', 'next'], [:pkg_has, '@remix-run/react', 'remix'],
+        [:pkg_has, 'nuxt', 'nuxt'], [:pkg_has, 'svelte', 'svelte'],
+        [:pkg_has, '@sveltejs/kit', 'svelte'], [:pkg_has, 'react', 'react'],
+        [:pkg_has, 'vue', 'vue'], [:pkg_has, 'express', 'express']
+      ],
+      'python' => [
+        [:file_exists, 'manage.py', 'django'], [:pip_has, 'django', 'django'],
+        [:pip_has, 'flask', 'flask'], [:pip_has, 'fastapi', 'fastapi']
+      ],
+      'rust' => [
+        [:file_contains, 'Cargo.toml', 'actix-web', 'actix'],
+        [:file_contains, 'Cargo.toml', 'axum', 'axum'],
+        [:file_contains, 'Cargo.toml', 'rocket', 'rocket']
+      ],
+      'go' => [
+        [:file_contains, 'go.mod', 'gin-gonic', 'gin'],
+        [:file_contains, 'go.mod', 'labstack/echo', 'echo'],
+        [:file_contains, 'go.mod', 'gofiber/fiber', 'fiber'],
+        [:file_contains, 'go.mod', 'go-chi/chi', 'chi']
+      ],
+      'elixir' => [[:dep_in_file, 'mix.exs', 'phoenix', 'phoenix']]
+    }.freeze
+    TOOL_RULES = {
+      test: {
+        'ruby' => [
+          [:dep_in_file, 'Gemfile', 'rspec', 'bundle exec rspec'],
+          [:always, 'bundle exec rake test']
+        ],
+        'javascript' => [
+          [:pkg_has, 'vitest', 'npx vitest run'],
+          [:pkg_has, 'jest', 'npx jest'],
+          [:always, 'npm test']
+        ],
+        'python' => [
+          [:file_contains, 'pyproject.toml', 'pytest', 'pytest'],
+          [:always, 'python -m pytest']
+        ],
+        'rust' => [[:always, 'cargo test']],
+        'go' => [[:always, 'go test ./...']],
+        'java' => [[:file_exists, 'gradlew', './gradlew test'], [:always, 'mvn test']],
+        'elixir' => [[:always, 'mix test']]
+      },
+      lint: {
+        'ruby' => [[:dep_in_file, 'Gemfile', 'rubocop', 'bundle exec rubocop -A']],
+        'javascript' => [
+          [:pkg_has, 'biome', 'npx biome check --write'],
+          [:pkg_has, '@biomejs/biome', 'npx biome check --write'],
+          [:pkg_has, 'eslint', 'npx eslint --fix .']
+        ],
+        'python' => [
+          [:file_contains, 'pyproject.toml', 'ruff', 'ruff check --fix .'],
+          [:always, 'flake8']
+        ],
+        'rust' => [[:always, 'cargo clippy --fix --allow-dirty']],
+        'go' => [[:always, 'golangci-lint run']],
+        'elixir' => [[:always, 'mix credo']]
+      },
+      format: {
+        'javascript' => [
+          [:pkg_has, 'biome', nil],
+          [:pkg_has, '@biomejs/biome', nil],
+          [:pkg_has, 'prettier', 'npx prettier --write .']
+        ],
+        'python' => [
+          [:file_contains, 'pyproject.toml', 'ruff', 'ruff format .'],
+          [:file_contains, 'pyproject.toml', 'black', 'black .']
+        ],
+        'rust' => [[:always, 'cargo fmt']],
+        'go' => [[:always, 'gofmt -w .']],
+        'elixir' => [[:always, 'mix format']]
+      },
+      security: {
+        'ruby' => [
+          [:dep_in_file, 'Gemfile', 'brakeman', 'bundle exec brakeman -q'],
+          [:dep_in_file, 'Gemfile', 'bundler-audit', 'bundle exec bundler-audit check']
+        ],
+        'javascript' => [[:always, 'npm audit --omit=dev']],
+        'python' => [
+          [:file_contains, 'pyproject.toml', 'bandit', 'bandit -r .'],
+          [:file_contains, 'pyproject.toml', 'safety', 'safety check']
+        ],
+        'rust' => [[:file_contains, 'Cargo.toml', 'cargo-audit', 'cargo audit']],
+        'go' => [[:always, 'gosec ./...']]
+      },
+      setup: {
+        'ruby' => [[:file_exists, 'Gemfile', 'bundle install']],
+        'javascript' => [
+          [:file_exists, 'package-lock.json', 'npm install'],
+          [:file_exists, 'yarn.lock', 'yarn install'],
+          [:file_exists, 'pnpm-lock.yaml', 'pnpm install'],
+          [:file_exists, 'package.json', 'npm install']
+        ],
+        'python' => [
+          [:file_exists, 'pyproject.toml', 'pip install -e .'],
+          [:file_exists, 'requirements.txt', 'pip install -r requirements.txt']
+        ],
+        'rust' => [[:file_exists, 'Cargo.toml', 'cargo fetch']],
+        'go' => [[:file_exists, 'go.mod', 'go mod download']],
+        'elixir' => [[:file_exists, 'mix.exs', 'mix deps.get']],
+        'java' => [
+          [:file_exists, 'gradlew', './gradlew dependencies'],
+          [:file_exists, 'pom.xml', 'mvn dependency:resolve']
+        ]
+      }
+    }.freeze
 
     def initialize(project_dir)
       @dir = project_dir
@@ -14,15 +139,16 @@ module Ocak
 
     def detect
       lang = detect_language
+      key = rules_key(lang)
       mono = detect_monorepo
       Result.new(
         language: lang,
-        framework: detect_framework(lang),
-        test_command: detect_test_command(lang),
-        lint_command: detect_lint_command(lang),
-        format_command: detect_format_command(lang),
-        security_commands: detect_security_commands(lang),
-        setup_command: detect_setup_command(lang),
+        framework: first_match(FRAMEWORK_RULES[key]),
+        test_command: first_match(TOOL_RULES[:test][key]),
+        lint_command: first_match(TOOL_RULES[:lint][key]),
+        format_command: first_match(TOOL_RULES[:format][key]),
+        security_commands: all_matches(TOOL_RULES[:security][key]),
+        setup_command: first_match(TOOL_RULES[:setup][key]),
         monorepo: mono[:detected],
         packages: mono[:packages]
       )
@@ -31,286 +157,28 @@ module Ocak
     private
 
     def detect_language
-      return 'ruby'       if exists?('Gemfile')
-      return 'typescript' if exists?('tsconfig.json')
-      return 'javascript' if exists?('package.json')
-      return 'python'     if exists?('pyproject.toml') || exists?('setup.py') || exists?('requirements.txt')
-      return 'rust'       if exists?('Cargo.toml')
-      return 'go'         if exists?('go.mod')
-      return 'java'       if exists?('pom.xml') || exists?('build.gradle')
-      return 'elixir'     if exists?('mix.exs')
-
+      LANGUAGE_RULES.each { |lang, files| return lang if files.any? { |f| exists?(f) } }
       'unknown'
     end
 
-    def detect_framework(lang)
-      case lang
-      when 'ruby' then detect_ruby_framework
-      when 'typescript', 'javascript' then detect_js_framework
-      when 'python'     then detect_python_framework
-      when 'rust'       then detect_rust_framework
-      when 'go'         then detect_go_framework
-      when 'elixir'     then 'phoenix' if gemfile_has?('mix.exs', 'phoenix')
+    def rules_key(lang) = lang == 'typescript' ? 'javascript' : lang
+    def first_match(rules) = rules&.find { |rule| match_rule?(rule) }&.last
+    def all_matches(rules) = (rules || []).filter_map { |rule| rule.last if match_rule?(rule) }
+
+    def match_rule?(rule)
+      case rule.first
+      when :dep_in_file   then gemfile_has?(rule[1], rule[2])
+      when :pkg_has       then pkg_has?(rule[1])
+      when :pip_has       then pip_has?(rule[1])
+      when :file_contains then read_file(rule[1]).include?(rule[2])
+      when :file_exists   then exists?(rule[1])
+      when :always        then true
       end
     end
 
-    def detect_test_command(lang)
-      case lang
-      when 'ruby'
-        gemfile_has?('Gemfile', 'rspec') ? 'bundle exec rspec' : 'bundle exec rake test'
-      when 'typescript', 'javascript'
-        return 'npx vitest run' if pkg_has?('vitest')
-        return 'npx jest'       if pkg_has?('jest')
-
-        'npm test'
-      when 'python'
-        return 'pytest' if exists?('pyproject.toml') && read_file('pyproject.toml').include?('pytest')
-
-        'python -m pytest'
-      when 'rust'  then 'cargo test'
-      when 'go'    then 'go test ./...'
-      when 'java'  then exists?('gradlew') ? './gradlew test' : 'mvn test'
-      when 'elixir' then 'mix test'
-      end
-    end
-
-    def detect_lint_command(lang)
-      case lang
-      when 'ruby'
-        'bundle exec rubocop -A' if gemfile_has?('Gemfile', 'rubocop')
-      when 'typescript', 'javascript'
-        return 'npx biome check --write' if pkg_has?('biome') || pkg_has?('@biomejs/biome')
-
-        'npx eslint --fix .' if pkg_has?('eslint')
-      when 'python'
-        return 'ruff check --fix .' if exists?('pyproject.toml') && read_file('pyproject.toml').include?('ruff')
-
-        'flake8'
-      when 'rust'   then 'cargo clippy --fix --allow-dirty'
-      when 'go'     then 'golangci-lint run'
-      when 'elixir' then 'mix credo'
-      end
-    end
-
-    def detect_format_command(lang)
-      case lang
-      when 'ruby' then nil # rubocop handles formatting
-      when 'typescript', 'javascript'
-        return nil if pkg_has?('biome') || pkg_has?('@biomejs/biome') # biome handles both
-
-        'npx prettier --write .' if pkg_has?('prettier')
-      when 'python'
-        return 'ruff format .' if exists?('pyproject.toml') && read_file('pyproject.toml').include?('ruff')
-
-        'black .' if exists?('pyproject.toml') && read_file('pyproject.toml').include?('black')
-      when 'rust'   then 'cargo fmt'
-      when 'go'     then 'gofmt -w .'
-      when 'elixir' then 'mix format'
-      end
-    end
-
-    def detect_security_commands(lang)
-      cmds = []
-      case lang
-      when 'ruby'
-        cmds << 'bundle exec brakeman -q' if gemfile_has?('Gemfile', 'brakeman')
-        cmds << 'bundle exec bundler-audit check' if gemfile_has?('Gemfile', 'bundler-audit')
-      when 'typescript', 'javascript'
-        cmds << 'npm audit --omit=dev'
-      when 'python'
-        cmds << 'bandit -r .' if exists?('pyproject.toml') && read_file('pyproject.toml').include?('bandit')
-        cmds << 'safety check' if exists?('pyproject.toml') && read_file('pyproject.toml').include?('safety')
-      when 'rust'
-        cmds << 'cargo audit' if read_file('Cargo.toml').include?('cargo-audit')
-      when 'go'
-        cmds << 'gosec ./...'
-      end
-      cmds
-    end
-
-    def detect_setup_command(lang)
-      case lang
-      when 'ruby' then 'bundle install' if exists?('Gemfile')
-      when 'typescript', 'javascript' then detect_js_setup_command
-      when 'python' then detect_python_setup_command
-      when 'rust' then 'cargo fetch' if exists?('Cargo.toml')
-      when 'go' then 'go mod download' if exists?('go.mod')
-      when 'elixir' then 'mix deps.get' if exists?('mix.exs')
-      when 'java' then detect_java_setup_command
-      end
-    end
-
-    def detect_js_setup_command
-      return 'npm install' if exists?('package-lock.json')
-      return 'yarn install' if exists?('yarn.lock')
-      return 'pnpm install' if exists?('pnpm-lock.yaml')
-
-      'npm install' if exists?('package.json')
-    end
-
-    def detect_python_setup_command
-      return 'pip install -e .' if exists?('pyproject.toml')
-
-      'pip install -r requirements.txt' if exists?('requirements.txt')
-    end
-
-    def detect_java_setup_command
-      return './gradlew dependencies' if exists?('gradlew')
-
-      'mvn dependency:resolve' if exists?('pom.xml')
-    end
-
-    # Monorepo detection
-
-    def detect_monorepo
-      packages = []
-      packages.concat(detect_npm_workspaces)
-      packages.concat(detect_pnpm_workspaces)
-      packages.concat(detect_cargo_workspaces)
-      packages.concat(detect_go_workspaces)
-      packages.concat(detect_lerna_packages)
-      packages.concat(detect_convention_packages) if packages.empty?
-      packages.uniq!
-      { detected: packages.any?, packages: packages }
-    end
-
-    def detect_npm_workspaces
-      return [] unless exists?('package.json')
-
-      pkg = begin
-        JSON.parse(read_file('package.json'))
-      rescue JSON::ParserError
-        {}
-      end
-      workspaces = pkg['workspaces']
-      workspaces = workspaces['packages'] if workspaces.is_a?(Hash)
-      return [] unless workspaces.is_a?(Array) && workspaces.any?
-
-      expand_workspace_globs(workspaces)
-    end
-
-    def detect_pnpm_workspaces
-      return [] unless exists?('pnpm-workspace.yaml')
-
-      content = read_file('pnpm-workspace.yaml')
-      globs = content.scan(/^\s*-\s*['"]?([^'"#\n]+)/).flatten.map(&:strip)
-      expand_workspace_globs(globs)
-    end
-
-    def detect_cargo_workspaces
-      return [] unless exists?('Cargo.toml') && read_file('Cargo.toml').include?('[workspace]')
-
-      read_file('Cargo.toml').scan(/members\s*=\s*\[(.*?)\]/m).flatten.flat_map do |members|
-        globs = members.scan(/"([^"]+)"/).flatten
-        expand_workspace_globs(globs)
-      end
-    end
-
-    def detect_go_workspaces
-      return [] unless exists?('go.work')
-
-      read_file('go.work').scan(/use\s+(\S+)/).flatten.select do |pkg|
-        Dir.exist?(File.join(@dir, pkg))
-      end
-    end
-
-    def detect_lerna_packages
-      return [] unless exists?('lerna.json')
-
-      lerna = begin
-        JSON.parse(read_file('lerna.json'))
-      rescue JSON::ParserError
-        {}
-      end
-      expand_workspace_globs(lerna['packages'] || ['packages/*'])
-    end
-
-    def detect_convention_packages
-      packages = []
-      %w[packages apps services modules libs].each do |candidate|
-        path = File.join(@dir, candidate)
-        next unless Dir.exist?(path)
-
-        subdirs = Dir.entries(path).reject { |e| e.start_with?('.') }.select do |e|
-          File.directory?(File.join(path, e))
-        end
-        packages.concat(subdirs.map { |s| "#{candidate}/#{s}" }) if subdirs.size > 1
-      end
-      packages
-    end
-
-    def expand_workspace_globs(globs)
-      globs.flat_map do |glob|
-        pattern = File.join(@dir, glob)
-        Dir.glob(pattern).select { |p| File.directory?(p) }.map do |p|
-          p.sub("#{@dir}/", '')
-        end
-      end
-    end
-
-    # Framework detection helpers
-
-    def detect_ruby_framework
-      return 'rails'   if gemfile_has?('Gemfile', 'rails')
-      return 'sinatra' if gemfile_has?('Gemfile', 'sinatra')
-      return 'hanami'  if gemfile_has?('Gemfile', 'hanami')
-
-      nil
-    end
-
-    def detect_js_framework
-      return 'next'    if pkg_has?('next')
-      return 'remix'   if pkg_has?('@remix-run/react')
-      return 'nuxt'    if pkg_has?('nuxt')
-      return 'svelte'  if pkg_has?('svelte') || pkg_has?('@sveltejs/kit')
-      return 'react'   if pkg_has?('react')
-      return 'vue'     if pkg_has?('vue')
-      return 'express' if pkg_has?('express')
-
-      nil
-    end
-
-    def detect_python_framework
-      return 'django' if exists?('manage.py') || pip_has?('django')
-      return 'flask'  if pip_has?('flask')
-      return 'fastapi' if pip_has?('fastapi')
-
-      nil
-    end
-
-    def detect_rust_framework
-      content = read_file('Cargo.toml')
-      return 'actix'  if content.include?('actix-web')
-      return 'axum'   if content.include?('axum')
-      return 'rocket' if content.include?('rocket')
-
-      nil
-    end
-
-    def detect_go_framework
-      content = read_file('go.mod')
-      return 'gin'   if content.include?('gin-gonic')
-      return 'echo'  if content.include?('labstack/echo')
-      return 'fiber' if content.include?('gofiber/fiber')
-      return 'chi'   if content.include?('go-chi/chi')
-
-      nil
-    end
-
-    # File helpers
-
-    def exists?(filename)
-      File.exist?(File.join(@dir, filename))
-    end
-
-    def read_file(filename)
-      path = File.join(@dir, filename)
-      File.exist?(path) ? File.read(path) : ''
-    end
-
-    def gemfile_has?(file, gem_name)
-      read_file(file).match?(/['"]#{Regexp.escape(gem_name)}[\w-]*['"]/)
-    end
+    def exists?(filename) = File.exist?(File.join(@dir, filename))
+    def read_file(filename) = File.join(@dir, filename).then { |p| File.exist?(p) ? File.read(p) : '' }
+    def gemfile_has?(file, gem_name) = read_file(file).match?(/['"]#{Regexp.escape(gem_name)}[\w-]*['"]/)
 
     def pkg_has?(package)
       @pkg_json ||= begin
@@ -319,7 +187,6 @@ module Ocak
       rescue JSON::ParserError
         {}
       end
-
       deps = (@pkg_json['dependencies'] || {}).merge(@pkg_json['devDependencies'] || {})
       deps.key?(package)
     end
