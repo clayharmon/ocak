@@ -131,6 +131,14 @@ RSpec.describe Ocak::Config do
     it 'defaults failed label' do
       expect(config.label_failed).to eq('pipeline-failed')
     end
+
+    it 'defaults reready label' do
+      expect(config.label_reready).to eq('auto-reready')
+    end
+
+    it 'defaults awaiting_review label' do
+      expect(config.label_awaiting_review).to eq('auto-pending-human')
+    end
   end
 
   describe 'label overrides' do
@@ -146,6 +154,16 @@ RSpec.describe Ocak::Config do
 
     it 'defaults unset labels' do
       expect(config.label_completed).to eq('completed')
+    end
+
+    it 'respects custom reready label' do
+      config_with_reready = described_class.new({ labels: { reready: 'needs-work' } }, dir)
+      expect(config_with_reready.label_reready).to eq('needs-work')
+    end
+
+    it 'respects custom awaiting_review label' do
+      config_with_awaiting = described_class.new({ labels: { awaiting_review: 'pending' } }, dir)
+      expect(config_with_awaiting.label_awaiting_review).to eq('pending')
     end
   end
 
@@ -201,6 +219,10 @@ RSpec.describe Ocak::Config do
     it 'defaults cost_budget to nil' do
       expect(config.cost_budget).to be_nil
     end
+
+    it 'defaults manual_review to false' do
+      expect(config.manual_review).to be false
+    end
   end
 
   describe 'safety overrides' do
@@ -224,6 +246,19 @@ RSpec.describe Ocak::Config do
 
     it 'returns configured max_issues_per_run' do
       expect(config.max_issues_per_run).to eq(10)
+    end
+  end
+
+  describe 'manual_review' do
+    it 'reads from pipeline config' do
+      config = described_class.new({ pipeline: { manual_review: true } }, dir)
+      expect(config.manual_review).to be true
+    end
+
+    it 'can be overridden' do
+      config = described_class.new({}, dir)
+      config.override(:manual_review, true)
+      expect(config.manual_review).to be true
     end
   end
 

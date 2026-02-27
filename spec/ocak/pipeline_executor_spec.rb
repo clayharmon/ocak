@@ -11,6 +11,7 @@ RSpec.describe Ocak::PipelineExecutor do
                     cost_budget: nil,
                     test_command: nil,
                     lint_check_command: nil,
+                    manual_review: false,
                     language: 'ruby',
                     steps: [
                       { 'agent' => 'implementer', 'role' => 'implement' },
@@ -178,6 +179,35 @@ RSpec.describe Ocak::PipelineExecutor do
       executor.run_pipeline(10, logger: logger, claude: claude)
 
       expect(claude).to have_received(:run_agent).with('documenter', anything, chdir: anything)
+    end
+  end
+
+  describe 'manual review mode' do
+    let(:steps_with_merge) do
+      [
+        { 'agent' => 'implementer', 'role' => 'implement' },
+        { 'agent' => 'reviewer', 'role' => 'review' },
+        { 'agent' => 'merger', 'role' => 'merge' }
+      ]
+    end
+
+    before do
+      allow(config).to receive(:steps).and_return(steps_with_merge)
+      allow(config).to receive(:manual_review).and_return(true)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+    end
+
+    it 'skips the merge step when manual_review is true' do
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(claude).not_to have_received(:run_agent).with('merger', anything, chdir: anything)
+    end
+
+    it 'still runs non-merge steps' do
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(claude).to have_received(:run_agent).with('implementer', anything, chdir: anything)
+      expect(claude).to have_received(:run_agent).with('reviewer', anything, chdir: anything)
     end
   end
 

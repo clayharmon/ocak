@@ -11,6 +11,9 @@ RSpec.describe Ocak::PipelineRunner do
                     label_in_progress: 'in-progress',
                     label_completed: 'completed',
                     label_failed: 'pipeline-failed',
+                    label_reready: 'auto-reready',
+                    label_awaiting_review: 'auto-pending-human',
+                    manual_review: false,
                     log_dir: 'logs/pipeline',
                     poll_interval: 1,
                     max_parallel: 2,
@@ -194,6 +197,111 @@ RSpec.describe Ocak::PipelineRunner do
 
       # All steps run including full-complexity ones
       expect(claude).to have_received(:run_agent).with('documenter', anything, chdir: anything)
+    end
+  end
+
+  describe 'manual review mode' do
+    context 'single issue mode' do
+      subject(:runner) { described_class.new(config: config, options: { single: 42 }) }
+
+      before do
+        allow(config).to receive(:manual_review).and_return(true)
+        allow(config).to receive(:label_awaiting_review).and_return('auto-pending-human')
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:transition)
+        allow(claude).to receive(:run_agent).and_return(success_result)
+      end
+
+      it 'transitions to awaiting_review instead of completed' do
+        runner.run
+
+        expect(issues).to have_received(:transition)
+          .with(42, from: 'in-progress', to: 'auto-pending-human')
+      end
+
+      it 'tells the merger not to merge or close the issue' do
+        runner.run
+
+        expect(claude).to have_received(:run_agent)
+          .with('merger', /do NOT merge.*do NOT close/i, chdir: '/project')
+      end
+    end
+
+    context 'batch mode' do
+      subject(:runner) { described_class.new(config: config, options: { once: true }) }
+
+      let(:worktree) do
+        Ocak::WorktreeManager::Worktree.new(
+          path: '/project/.claude/worktrees/issue-1',
+          branch: 'auto/issue-1-abc',
+          issue_number: 1
+        )
+      end
+      let(:worktree_manager) do
+        instance_double(Ocak::WorktreeManager, clean_stale: [], create: worktree, remove: nil)
+      end
+      let(:merger) do
+        instance_double(Ocak::MergeManager)
+      end
+
+      before do
+        allow(config).to receive(:manual_review).and_return(true)
+        allow(config).to receive(:label_awaiting_review).and_return('auto-pending-human')
+        allow(config).to receive(:label_reready).and_return('auto-reready')
+        allow(Ocak::WorktreeManager).to receive(:new).and_return(worktree_manager)
+        allow(Ocak::MergeManager).to receive(:new).and_return(merger)
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:fetch_ready).and_return([{ 'number' => 1, 'title' => 'A' }])
+        allow(issues).to receive(:fetch_reready_prs).and_return([])
+        allow(issues).to receive(:transition)
+        allow(issues).to receive(:comment)
+        allow(claude).to receive(:run_agent).and_return(success_result)
+        allow(merger).to receive(:create_pr_only).and_return(55)
+      end
+
+      it 'calls create_pr_only instead of merge' do
+        runner.run
+
+        expect(merger).to have_received(:create_pr_only)
+      end
+
+      it 'transitions to awaiting_review on success' do
+        runner.run
+
+        expect(issues).to have_received(:transition)
+          .with(1, from: 'in-progress', to: 'auto-pending-human')
+      end
+
+      it 'transitions to failed when PR creation fails' do
+        allow(merger).to receive(:create_pr_only).and_return(nil)
+
+        runner.run
+
+        expect(issues).to have_received(:transition)
+          .with(1, from: 'in-progress', to: 'pipeline-failed')
+      end
+    end
+
+    context 'run_loop reready polling' do
+      subject(:runner) { described_class.new(config: config, options: { once: true }) }
+
+      before do
+        allow(config).to receive(:manual_review).and_return(true)
+        allow(config).to receive(:label_reready).and_return('auto-reready')
+        allow(config).to receive(:label_awaiting_review).and_return('auto-pending-human')
+        allow(Ocak::WorktreeManager).to receive(:new)
+          .and_return(instance_double(Ocak::WorktreeManager, clean_stale: []))
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:fetch_ready).and_return([])
+        allow(issues).to receive(:fetch_reready_prs).and_return([])
+      end
+
+      it 'checks for reready PRs before checking for ready issues' do
+        runner.run
+
+        expect(issues).to have_received(:fetch_reready_prs).ordered
+        expect(issues).to have_received(:fetch_ready).ordered
+      end
     end
   end
 
