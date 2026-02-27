@@ -1,0 +1,7 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'ocak'
+require 'ocak/cli'
+
+Dry::CLI.new(Ocak::CLI::Commands).call

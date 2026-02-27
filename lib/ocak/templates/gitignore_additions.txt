@@ -1,0 +1,10 @@
+# Claude Code
+.claude/settings.local.json
+.claude/todos/
+.claude/filestate/
+.claude/statsig/
+.claude/credentials.json
+.claude/worktrees/
+
+# Ocak pipeline logs
+logs/pipeline/

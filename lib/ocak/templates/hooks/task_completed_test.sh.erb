@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# TaskCompleted hook — runs the test suite for the project.
+# Blocks completion (exit 2) if tests fail. Stderr goes to Claude as feedback.
+
+set -uo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$PROJECT_DIR"
+
+FAILURES=()
+
+<%- if test_command -%>
+# Run tests
+if ! <%= test_command %> 2>&1; then
+  FAILURES+=("Tests failed: <%= test_command %>")
+fi
+<%- end -%>
+
+<%- if lint_command && !lint_command.include?("--fix") && !lint_command.include?("--write") && !lint_command.include?("-A") -%>
+# Run linter (check only, no auto-fix)
+if ! <%= lint_command %> 2>&1; then
+  FAILURES+=("Lint failed: <%= lint_command %>")
+fi
+<%- end -%>
+
+if [ ${#FAILURES[@]} -gt 0 ]; then
+  echo "Checks failed. Fix before completing:" >&2
+  for f in "${FAILURES[@]}"; do
+    echo "  - $f" >&2
+  done
+  exit 2
+fi
+
+exit 0

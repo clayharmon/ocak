@@ -1,0 +1,14 @@
+/.bundle/
+/vendor/
+/pkg/
+/tmp/
+*.gem
+/.ruby-lsp/
+/coverage/
+.env
+.claude/settings.local.json
+.claude/todos/
+.claude/filestate/
+.claude/statsig/
+.claude/credentials.json
+/spec/examples.txt
