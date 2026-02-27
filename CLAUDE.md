@@ -9,7 +9,8 @@ lib/ocak/
 ├── cli.rb                 # dry-cli registry, maps subcommands to command classes
 ├── commands/              # One class per CLI subcommand (init, run, design, audit, debt, status, clean)
 ├── config.rb              # Loads and validates ocak.yml, provides typed accessors
-├── stack_detector.rb      # Detects project language, framework, test/lint/security tools
+├── stack_detector.rb      # Detects project language, framework, test/lint/security tools via data-driven rules
+├── monorepo_detector.rb   # MonorepoDetector module (included by StackDetector) — npm/pnpm/cargo/go workspace detection
 ├── agent_generator.rb     # Generates agent/skill/hook files from ERB templates, optionally enhanced via claude -p
 ├── pipeline_runner.rb     # Orchestration: poll → plan → worktree → delegate to executor → merge
 ├── pipeline_executor.rb   # Step execution: run_pipeline, execute_step, conditions, cost tracking
