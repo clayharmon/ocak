@@ -240,4 +240,127 @@ RSpec.describe Ocak::MergeManager do
       end
     end
   end
+
+  describe '#create_pr_only' do
+    let(:success_status) { instance_double(Process::Status, success?: true) }
+    let(:failure_status) { instance_double(Process::Status, success?: false) }
+
+    before do
+      allow(Open3).to receive(:capture3)
+        .with('git', 'status', '--porcelain', chdir: worktree.path)
+        .and_return(['', '', success_status])
+    end
+
+    context 'when everything succeeds' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'issue', 'view', '42', '--json', 'title', chdir: '/project')
+          .and_return([JSON.generate({ 'title' => 'Fix the bug' }), '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
+                '--head', worktree.branch, chdir: worktree.path)
+          .and_return(["https://github.com/owner/repo/pull/99\n", '', success_status])
+      end
+
+      it 'returns the PR number' do
+        expect(manager.create_pr_only(42, worktree)).to eq(99)
+      end
+
+      it 'creates the PR with the correct branch head' do
+        expect(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
+                '--head', 'auto/issue-42-abc123', chdir: worktree.path)
+          .and_return(["https://github.com/owner/repo/pull/99\n", '', success_status])
+
+        manager.create_pr_only(42, worktree)
+      end
+    end
+
+    context 'when rebase fails' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: worktree.path)
+          .and_return(['', 'conflict', failure_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', '--abort', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'merge', 'origin/main', '--no-edit', chdir: worktree.path)
+          .and_return(['', 'conflict', failure_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'merge', '--abort', chdir: worktree.path)
+          .and_return(['', '', success_status])
+      end
+
+      it 'returns nil' do
+        expect(manager.create_pr_only(42, worktree)).to be_nil
+      end
+    end
+
+    context 'when push fails' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)
+          .and_return(['', 'rejected', failure_status])
+      end
+
+      it 'returns nil' do
+        expect(manager.create_pr_only(42, worktree)).to be_nil
+      end
+    end
+
+    context 'when PR creation fails' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'issue', 'view', '42', '--json', 'title', chdir: '/project')
+          .and_return([JSON.generate({ 'title' => 'Fix the bug' }), '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'create', any_args, chdir: worktree.path)
+          .and_return(['', 'error', failure_status])
+      end
+
+      it 'returns nil' do
+        expect(manager.create_pr_only(42, worktree)).to be_nil
+      end
+    end
+  end
 end

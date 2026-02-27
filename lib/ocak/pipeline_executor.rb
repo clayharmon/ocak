@@ -104,6 +104,10 @@ module Ocak
       role = step[:role].to_s
       condition = step[:condition]
 
+      if role == 'merge' && @config.manual_review
+        logger.info("Skipping #{role} — manual review mode")
+        return true
+      end
       if step[:complexity] == 'full' && state[:complexity] == 'simple'
         logger.info("Skipping #{role} — fast-track issue")
         return true

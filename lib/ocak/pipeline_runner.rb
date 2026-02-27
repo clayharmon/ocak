@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'pipeline_executor'
+require_relative 'reready_processor'
 
 module Ocak
   class PipelineRunner
@@ -56,10 +57,14 @@ module Ocak
       result = run_pipeline(issue_number, logger: logger, claude: claude)
 
       if result[:success]
-        claude.run_agent('merger', "Create a PR, merge it, and close issue ##{issue_number}",
-                         chdir: @config.project_dir)
-        issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_completed)
-        logger.info("Issue ##{issue_number} completed successfully")
+        if @config.manual_review
+          handle_single_manual_review(issue_number, logger: logger, claude: claude, issues: issues)
+        else
+          claude.run_agent('merger', "Create a PR, merge it, and close issue ##{issue_number}",
+                           chdir: @config.project_dir)
+          issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_completed)
+          logger.info("Issue ##{issue_number} completed successfully")
+        end
       else
         issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
         issues.comment(issue_number,
@@ -75,6 +80,8 @@ module Ocak
 
       loop do
         break if @shutting_down
+
+        process_reready_prs(logger: logger, issues: issues) if @config.manual_review
 
         logger.info("Checking for #{@config.label_ready} issues...")
         ready = issues.fetch_ready
@@ -123,17 +130,11 @@ module Ocak
       end
       results = threads.map(&:value)
 
+      merger = MergeManager.new(
+        config: @config, claude: build_claude(logger), logger: logger, watch: @watch_formatter
+      )
       results.select { |r| r[:success] }.each do |result|
-        merger = MergeManager.new(
-          config: @config, claude: build_claude(logger), logger: logger, watch: @watch_formatter
-        )
-        if merger.merge(result[:issue_number], result[:worktree])
-          issues.transition(result[:issue_number], from: @config.label_in_progress, to: @config.label_completed)
-          logger.info("Issue ##{result[:issue_number]} merged successfully")
-        else
-          issues.transition(result[:issue_number], from: @config.label_in_progress, to: @config.label_failed)
-          logger.error("Issue ##{result[:issue_number]} merge failed")
-        end
+        merge_completed_issue(result, merger: merger, issues: issues, logger: logger)
       end
 
       results.each do |result|
@@ -176,6 +177,53 @@ module Ocak
         issues.comment(issue_number,
                        "Pipeline failed at phase: #{result[:phase]}\n\n```\n#{result[:output][0..1000]}\n```")
         { issue_number: issue_number, success: false, worktree: worktree }
+      end
+    end
+
+    def merge_completed_issue(result, merger:, issues:, logger:)
+      if @config.manual_review
+        handle_batch_manual_review(result, merger: merger, issues: issues, logger: logger)
+      elsif merger.merge(result[:issue_number], result[:worktree])
+        issues.transition(result[:issue_number], from: @config.label_in_progress, to: @config.label_completed)
+        logger.info("Issue ##{result[:issue_number]} merged successfully")
+      else
+        issues.transition(result[:issue_number], from: @config.label_in_progress, to: @config.label_failed)
+        logger.error("Issue ##{result[:issue_number]} merge failed")
+      end
+    end
+
+    def handle_single_manual_review(issue_number, logger:, claude:, issues:)
+      claude.run_agent('merger',
+                       "Create a PR for issue ##{issue_number} but do NOT merge it and do NOT close the issue",
+                       chdir: @config.project_dir)
+      issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_awaiting_review)
+      logger.info("Issue ##{issue_number} PR created (manual review mode)")
+    end
+
+    def handle_batch_manual_review(result, merger:, issues:, logger:)
+      pr_number = merger.create_pr_only(result[:issue_number], result[:worktree])
+      if pr_number
+        issues.transition(result[:issue_number], from: @config.label_in_progress,
+                                                 to: @config.label_awaiting_review)
+        logger.info("Issue ##{result[:issue_number]} PR ##{pr_number} created (manual review mode)")
+      else
+        issues.transition(result[:issue_number], from: @config.label_in_progress, to: @config.label_failed)
+        logger.error("Issue ##{result[:issue_number]} PR creation failed")
+      end
+    end
+
+    def process_reready_prs(logger:, issues:)
+      reready = issues.fetch_reready_prs
+      return if reready.empty?
+
+      logger.info("Found #{reready.size} reready PR(s)")
+      processor = RereadyProcessor.new(config: @config, logger: logger,
+                                       claude: build_claude(logger), issues: issues,
+                                       watch: @watch_formatter)
+      reready.each do |pr|
+        break if @shutting_down
+
+        processor.process(pr)
       end
     end
 

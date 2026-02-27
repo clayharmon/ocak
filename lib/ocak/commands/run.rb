@@ -19,6 +19,8 @@ module Ocak
       option :once, type: :boolean, default: false, desc: 'Process current batch and exit'
       option :max_parallel, type: :integer, desc: 'Max concurrent pipelines'
       option :poll_interval, type: :integer, desc: 'Seconds between polls'
+      option :manual_review, type: :boolean, default: false,
+                             desc: 'Create PRs without auto-merge; wait for human review'
 
       def call(**options)
         config = Config.load
@@ -26,6 +28,7 @@ module Ocak
         # CLI options override config
         config.override(:max_parallel, options[:max_parallel]) if options[:max_parallel]
         config.override(:poll_interval, options[:poll_interval]) if options[:poll_interval]
+        config.override(:manual_review, true) if options[:manual_review]
 
         runner = PipelineRunner.new(
           config: config,

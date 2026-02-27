@@ -221,6 +221,154 @@ RSpec.describe Ocak::IssueFetcher do
     end
   end
 
+  describe '#fetch_reready_prs' do
+    before do
+      allow(config).to receive(:label_reready).and_return('auto-reready')
+    end
+
+    it 'returns parsed PR list' do
+      prs_json = JSON.generate([
+                                 { 'number' => 10, 'title' => 'Fix #1',
+                                   'body' => 'Closes #1', 'headRefName' => 'auto/issue-1-abc',
+                                   'labels' => [{ 'name' => 'auto-reready' }] }
+                               ])
+
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'list',
+              '--label', 'auto-reready',
+              '--state', 'open',
+              '--json', 'number,title,body,headRefName,labels',
+              '--limit', '20',
+              chdir: '/project')
+        .and_return([prs_json, '', success_status])
+
+      prs = fetcher.fetch_reready_prs
+      expect(prs.size).to eq(1)
+      expect(prs.first['number']).to eq(10)
+    end
+
+    it 'returns empty array on failure' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'list', any_args, chdir: '/project')
+        .and_return(['', 'error', failure_status])
+
+      expect(fetcher.fetch_reready_prs).to eq([])
+    end
+
+    it 'returns empty array on invalid JSON' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'list', any_args, chdir: '/project')
+        .and_return(['not json', '', success_status])
+
+      expect(fetcher.fetch_reready_prs).to eq([])
+    end
+  end
+
+  describe '#fetch_pr_comments' do
+    it 'returns comments and reviews' do
+      data = {
+        'comments' => [{ 'author' => { 'login' => 'user' }, 'body' => 'fix this' }],
+        'reviews' => [{ 'author' => { 'login' => 'reviewer' }, 'body' => 'needs work', 'state' => 'CHANGES_REQUESTED' }]
+      }
+
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'view', '10', '--json', 'comments,reviews', chdir: '/project')
+        .and_return([JSON.generate(data), '', success_status])
+
+      result = fetcher.fetch_pr_comments(10)
+      expect(result[:comments].size).to eq(1)
+      expect(result[:reviews].size).to eq(1)
+    end
+
+    it 'returns empty arrays on failure' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'view', any_args, chdir: '/project')
+        .and_return(['', 'error', failure_status])
+
+      result = fetcher.fetch_pr_comments(10)
+      expect(result[:comments]).to eq([])
+      expect(result[:reviews]).to eq([])
+    end
+  end
+
+  describe '#extract_issue_number_from_pr' do
+    it 'extracts from Closes #N' do
+      pr = { 'body' => 'This PR Closes #42' }
+      expect(fetcher.extract_issue_number_from_pr(pr)).to eq(42)
+    end
+
+    it 'extracts from Fixes #N' do
+      pr = { 'body' => 'Fixes #7 with some changes' }
+      expect(fetcher.extract_issue_number_from_pr(pr)).to eq(7)
+    end
+
+    it 'extracts from Resolves #N (case insensitive)' do
+      pr = { 'body' => 'resolves #100' }
+      expect(fetcher.extract_issue_number_from_pr(pr)).to eq(100)
+    end
+
+    it 'returns nil when no match' do
+      pr = { 'body' => 'Just some changes' }
+      expect(fetcher.extract_issue_number_from_pr(pr)).to be_nil
+    end
+
+    it 'returns nil when body is nil' do
+      pr = { 'body' => nil }
+      expect(fetcher.extract_issue_number_from_pr(pr)).to be_nil
+    end
+  end
+
+  describe '#pr_transition' do
+    it 'removes and adds labels' do
+      expect(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'edit', '10', '--remove-label', 'auto-reready', chdir: '/project')
+        .and_return(['', '', success_status])
+
+      expect(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'edit', '10', '--add-label', 'auto-pending-human', chdir: '/project')
+        .and_return(['', '', success_status])
+
+      result = fetcher.pr_transition(10, remove_label: 'auto-reready', add_label: 'auto-pending-human')
+      expect(result).to be true
+    end
+
+    it 'only removes label when add_label is nil' do
+      expect(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'edit', '10', '--remove-label', 'auto-reready', chdir: '/project')
+        .and_return(['', '', success_status])
+
+      result = fetcher.pr_transition(10, remove_label: 'auto-reready')
+      expect(result).to be true
+    end
+
+    it 'returns false when remove fails' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'edit', '10', '--remove-label', 'auto-reready', chdir: '/project')
+        .and_return(['', 'error', failure_status])
+
+      result = fetcher.pr_transition(10, remove_label: 'auto-reready')
+      expect(result).to be false
+    end
+  end
+
+  describe '#pr_comment' do
+    it 'comments on a PR' do
+      expect(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'comment', '10', '--body', 'Feedback addressed.', chdir: '/project')
+        .and_return(['', '', success_status])
+
+      expect(fetcher.pr_comment(10, 'Feedback addressed.')).to be true
+    end
+
+    it 'returns false on failure' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'comment', any_args, chdir: '/project')
+        .and_return(['', 'error', failure_status])
+
+      expect(fetcher.pr_comment(10, 'test')).to be false
+    end
+  end
+
   describe '#view' do
     it 'returns parsed issue data' do
       issue_json = JSON.generate({ 'number' => 42, 'title' => 'Test', 'body' => 'Description' })

@@ -52,6 +52,7 @@ module Ocak
     def worktree_dir  = dig(:pipeline, :worktree_dir) || '.claude/worktrees'
     def log_dir       = dig(:pipeline, :log_dir) || 'logs/pipeline'
     def cost_budget   = dig(:pipeline, :cost_budget)
+    def manual_review = @overrides[:manual_review] || dig(:pipeline, :manual_review) || false
 
     # Safety
     def allowed_authors    = dig(:safety, :allowed_authors) || []
@@ -63,6 +64,8 @@ module Ocak
     def label_in_progress = dig(:labels, :in_progress) || 'in-progress'
     def label_completed  = dig(:labels, :completed) || 'completed'
     def label_failed     = dig(:labels, :failed) || 'pipeline-failed'
+    def label_reready         = dig(:labels, :reready) || 'auto-reready'
+    def label_awaiting_review = dig(:labels, :awaiting_review) || 'auto-pending-human'
 
     # Steps
     def steps

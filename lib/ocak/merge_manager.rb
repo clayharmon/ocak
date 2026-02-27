@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'json'
 require 'open3'
 require 'shellwords'
 
@@ -48,7 +49,65 @@ module Ocak
       end
     end
 
+    # Create a PR without merging (manual review mode).
+    # Returns the PR number on success, nil on failure.
+    def create_pr_only(issue_number, worktree)
+      @logger.info("Creating PR (manual review) for issue ##{issue_number}")
+
+      commit_uncommitted_changes(issue_number, worktree)
+      return log_and_nil("Rebase failed for issue ##{issue_number}") unless rebase_onto_main(worktree)
+      return log_and_nil("Tests failed after rebase for issue ##{issue_number}") unless verify_tests(worktree)
+      return log_and_nil("Push failed for issue ##{issue_number}") unless push_branch(worktree)
+
+      open_pull_request(issue_number, worktree)
+    end
+
     private
+
+    def log_and_nil(message)
+      @logger.error(message)
+      nil
+    end
+
+    def open_pull_request(issue_number, worktree)
+      issue_title = fetch_issue_title(issue_number)
+      pr_title = "Fix ##{issue_number}: #{issue_title}"
+      pr_body = "Closes ##{issue_number}\n\n" \
+                '_This PR was created in manual review mode. ' \
+                'Review and label `auto-reready` to trigger automated fixes based on your feedback._'
+
+      stdout, stderr, status = Open3.capture3(
+        'gh', 'pr', 'create',
+        '--title', pr_title,
+        '--body', pr_body,
+        '--head', worktree.branch,
+        chdir: worktree.path
+      )
+
+      unless status.success?
+        @logger.error("PR creation failed: #{stderr}")
+        return nil
+      end
+
+      extract_pr_number(stdout)
+    end
+
+    def fetch_issue_title(issue_number)
+      stdout, _, status = Open3.capture3('gh', 'issue', 'view', issue_number.to_s,
+                                         '--json', 'title',
+                                         chdir: @config.project_dir)
+      return "Issue #{issue_number}" unless status.success?
+
+      data = JSON.parse(stdout)
+      data['title'] || "Issue #{issue_number}"
+    rescue JSON::ParserError
+      "Issue #{issue_number}"
+    end
+
+    def extract_pr_number(gh_output)
+      match = gh_output.match(%r{/pull/(\d+)})
+      match ? match[1].to_i : nil
+    end
 
     def commit_uncommitted_changes(issue_number, worktree)
       stdout, = git('status', '--porcelain', chdir: worktree.path)
