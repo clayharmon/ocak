@@ -68,6 +68,14 @@ Interactive skills for when you want to be in the loop:
 - `/scan-file <path>` — deep single-file analysis with test coverage check
 - `/debt` — tech debt tracker with risk scoring
 
+### Complexity Classification
+
+The planner classifies each issue as `simple` or `full`. Simple issues skip steps tagged with `complexity: full` (second fix pass, documenter, auditor) — so a typo fix doesn't burn through the whole pipeline.
+
+### Monorepo Support
+
+`ocak init` detects npm/pnpm workspaces, Cargo workspaces, Go workspaces, and Lerna packages. Detected packages are passed to agent templates so they scope their work to the right subdirectory.
+
 ### Label State Machine
 
 ```
@@ -87,6 +95,7 @@ stack:
   framework: rails
   test_command: "bundle exec rspec"
   lint_command: "bundle exec rubocop -A"
+  setup_command: "bundle install"       # Runs in new worktrees before pipeline starts
   security_commands:
     - "bundle exec brakeman -q"
     - "bundle exec bundler-audit check"
@@ -97,6 +106,13 @@ pipeline:
   poll_interval: 60      # Seconds between polls
   worktree_dir: ".claude/worktrees"
   log_dir: "logs/pipeline"
+  cost_budget: 20.0      # Optional: max USD spend per pipeline run
+
+# Safety controls
+safety:
+  allowed_authors: []         # Restrict to specific GitHub usernames (empty = allow all)
+  require_comment: false      # Require a confirmation comment before processing
+  max_issues_per_run: 5       # Cap issues per polling cycle
 
 # GitHub labels
 labels:
@@ -122,10 +138,13 @@ steps:
   - agent: implementer
     role: fix
     condition: has_findings
+    complexity: full            # Skipped for simple issues
   - agent: documenter
     role: document
+    complexity: full            # Skipped for simple issues
   - agent: auditor
     role: audit
+    complexity: full            # Skipped for simple issues
   - agent: merger
     role: merge
 
@@ -212,6 +231,8 @@ ocak run [options]                Run the pipeline
   --once                          Process current batch and exit
   --max-parallel N                Limit concurrency (default: 3)
   --poll-interval N               Seconds between polls (default: 60)
+ocak resume N [--watch]           Resume a failed pipeline from last successful step
+ocak hiz N [--watch]              Fast-mode: Sonnet-only implement+review+security, creates PR (no merge)
 ocak status                       Show pipeline state
 ocak clean                        Remove stale worktrees
 ocak design [description]         Launch issue design session
@@ -220,6 +241,22 @@ ocak debt                         Track technical debt
 ```
 
 ## FAQ
+
+**What's `ocak hiz`?**
+
+Fast mode. Runs implement + review + security using Sonnet instead of Opus, creates a PR but doesn't merge it. Good for simple issues where you want a quick PR to review yourself. Roughly 5-10x cheaper than the full pipeline.
+
+```bash
+ocak hiz 42 --watch
+```
+
+**How do I resume a failed pipeline?**
+
+```bash
+ocak resume 42 --watch
+```
+
+Picks up from the last successful step. State is saved in `logs/pipeline/issue-42-state.json`.
 
 **How much does it cost?**
 
