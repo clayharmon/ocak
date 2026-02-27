@@ -3,6 +3,7 @@
 require 'open3'
 require 'fileutils'
 require 'securerandom'
+require 'shellwords'
 
 module Ocak
   class WorktreeManager
@@ -12,7 +13,7 @@ module Ocak
       @mutex = Mutex.new
     end
 
-    def create(issue_number)
+    def create(issue_number, setup_command: nil)
       @mutex.synchronize do
         FileUtils.mkdir_p(@worktree_base)
 
@@ -21,6 +22,11 @@ module Ocak
 
         _, stderr, status = git('worktree', 'add', '-b', branch, path, 'main')
         raise WorktreeError, "Failed to create worktree: #{stderr}" unless status.success?
+
+        if setup_command
+          _, stderr, status = Open3.capture3(*Shellwords.shellsplit(setup_command), chdir: path)
+          raise WorktreeError, "Setup command failed: #{stderr}" unless status.success?
+        end
 
         Worktree.new(path: path, branch: branch, issue_number: issue_number)
       end

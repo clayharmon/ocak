@@ -138,7 +138,7 @@ module Ocak
       worktree = nil
 
       issues.transition(issue_number, from: @config.label_ready, to: @config.label_in_progress)
-      worktree = worktrees.create(issue_number)
+      worktree = worktrees.create(issue_number, setup_command: @config.setup_command)
       logger.info("Created worktree at #{worktree.path} (branch: #{worktree.branch})")
 
       result = run_pipeline(issue_number, logger: logger, claude: claude, chdir: worktree.path)
@@ -230,16 +230,20 @@ module Ocak
     end
 
     def run_final_verification(logger:, claude:, chdir:)
-      return nil unless @config.test_command
+      return nil unless @config.test_command || @config.lint_check_command
 
       logger.info('--- Final verification ---')
-      return nil if run_final_checks(logger, chdir: chdir)
+      result = run_final_checks(logger, chdir: chdir)
+      return nil if result[:success]
 
       logger.warn('Final checks failed, attempting fix...')
-      claude.run_agent('implementer', "Fix test and lint failures. Run: #{@config.test_command}", chdir: chdir)
-      return nil if run_final_checks(logger, chdir: chdir)
+      claude.run_agent('implementer',
+                       "Fix these test/lint failures:\n\n#{result[:output]}",
+                       chdir: chdir)
+      result = run_final_checks(logger, chdir: chdir)
+      return nil if result[:success]
 
-      { success: false, phase: 'final-verify', output: 'Tests still failing after fix attempt' }
+      { success: false, phase: 'final-verify', output: result[:output] }
     end
 
     def build_step_prompt(role, issue_number, review_output)
@@ -264,20 +268,71 @@ module Ocak
     end
 
     def run_final_checks(logger, chdir:)
-      commands = [@config.test_command, @config.lint_command].compact
       failures = []
+      output_parts = []
 
-      commands.each do |cmd|
-        _, _, status = Open3.capture3(*Shellwords.shellsplit(cmd), chdir: chdir)
-        failures << cmd unless status.success?
+      # Run test command on full suite
+      if @config.test_command
+        stdout, stderr, status = Open3.capture3(*Shellwords.shellsplit(@config.test_command), chdir: chdir)
+        unless status.success?
+          failures << @config.test_command
+          output_parts << "=== #{@config.test_command} ===\n#{stdout}\n#{stderr}"
+        end
+      end
+
+      # Run lint check (no auto-fix) scoped to changed files only
+      if @config.lint_check_command
+        lint_output = run_scoped_lint(logger, chdir: chdir)
+        if lint_output
+          failures << @config.lint_check_command
+          output_parts << lint_output
+        end
       end
 
       if failures.empty?
         logger.info('All checks passed')
-        true
+        { success: true }
       else
         logger.warn("Checks failed: #{failures.join(', ')}")
-        false
+        { success: false, failures: failures, output: output_parts.join("\n\n") }
+      end
+    end
+
+    def run_scoped_lint(logger, chdir:)
+      # Get files changed relative to main
+      changed_stdout, = Open3.capture3('git', 'diff', '--name-only', 'main', chdir: chdir)
+      changed_files = changed_stdout.lines.map(&:strip).reject(&:empty?)
+
+      # Filter to lintable files based on language
+      extensions = lint_extensions_for(@config.language)
+      lintable = changed_files.select { |f| extensions.any? { |ext| f.end_with?(ext) } }
+
+      if lintable.empty?
+        logger.info('No changed files to lint')
+        return nil
+      end
+
+      cmd_parts = Shellwords.shellsplit(@config.lint_check_command)
+      cmd_parts << '--force-exclusion' if @config.lint_check_command.include?('rubocop')
+      cmd_parts.concat(lintable)
+
+      stdout, stderr, status = Open3.capture3(*cmd_parts, chdir: chdir)
+      return nil if status.success?
+
+      "=== #{@config.lint_check_command} (#{lintable.size} files) ===\n#{stdout}\n#{stderr}"
+    end
+
+    def lint_extensions_for(language)
+      case language
+      when 'ruby'                    then %w[.rb .rake .gemspec]
+      when 'typescript'              then %w[.ts .tsx]
+      when 'javascript'              then %w[.js .jsx]
+      when 'python'                  then %w[.py]
+      when 'rust'                    then %w[.rs]
+      when 'go'                      then %w[.go]
+      when 'elixir'                  then %w[.ex .exs]
+      when 'java'                    then %w[.java]
+      else                                %w[.rb .ts .tsx .js .jsx .py .rs .go]
       end
     end
 

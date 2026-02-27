@@ -85,6 +85,7 @@ module Ocak
       lint_command = @stack.lint_command
       format_command = @stack.format_command
       security_commands = @stack.security_commands
+      setup_command = @stack.setup_command
       project_dir = @project_dir
 
       binding

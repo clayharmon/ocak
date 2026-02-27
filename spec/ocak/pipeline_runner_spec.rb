@@ -17,6 +17,9 @@ RSpec.describe Ocak::PipelineRunner do
                     worktree_dir: '.claude/worktrees',
                     test_command: nil,
                     lint_command: nil,
+                    lint_check_command: nil,
+                    setup_command: nil,
+                    language: 'ruby',
                     steps: [
                       { 'agent' => 'implementer', 'role' => 'implement' },
                       { 'agent' => 'reviewer', 'role' => 'review' },

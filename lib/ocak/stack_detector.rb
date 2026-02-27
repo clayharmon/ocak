@@ -5,7 +5,7 @@ require 'json'
 module Ocak
   class StackDetector
     Result = Struct.new(:language, :framework, :test_command, :lint_command,
-                        :format_command, :security_commands)
+                        :format_command, :security_commands, :setup_command)
 
     def initialize(project_dir)
       @dir = project_dir
@@ -19,7 +19,8 @@ module Ocak
         test_command: detect_test_command(lang),
         lint_command: detect_lint_command(lang),
         format_command: detect_format_command(lang),
-        security_commands: detect_security_commands(lang)
+        security_commands: detect_security_commands(lang),
+        setup_command: detect_setup_command(lang)
       )
     end
 
@@ -121,6 +122,38 @@ module Ocak
         cmds << 'gosec ./...'
       end
       cmds
+    end
+
+    def detect_setup_command(lang)
+      case lang
+      when 'ruby' then 'bundle install' if exists?('Gemfile')
+      when 'typescript', 'javascript' then detect_js_setup_command
+      when 'python' then detect_python_setup_command
+      when 'rust' then 'cargo fetch' if exists?('Cargo.toml')
+      when 'go' then 'go mod download' if exists?('go.mod')
+      when 'elixir' then 'mix deps.get' if exists?('mix.exs')
+      when 'java' then detect_java_setup_command
+      end
+    end
+
+    def detect_js_setup_command
+      return 'npm install' if exists?('package-lock.json')
+      return 'yarn install' if exists?('yarn.lock')
+      return 'pnpm install' if exists?('pnpm-lock.yaml')
+
+      'npm install' if exists?('package.json')
+    end
+
+    def detect_python_setup_command
+      return 'pip install -e .' if exists?('pyproject.toml')
+
+      'pip install -r requirements.txt' if exists?('requirements.txt')
+    end
+
+    def detect_java_setup_command
+      return './gradlew dependencies' if exists?('gradlew')
+
+      'mvn dependency:resolve' if exists?('pom.xml')
     end
 
     # Framework detection helpers

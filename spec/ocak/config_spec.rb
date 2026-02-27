@@ -58,6 +58,39 @@ RSpec.describe Ocak::Config do
     it 'returns security_commands' do
       expect(config.security_commands).to eq(['bundle exec brakeman -q'])
     end
+
+    it 'returns setup_command' do
+      data_with_setup = data.merge(stack: data[:stack].merge(setup_command: 'bundle install'))
+      config_with_setup = described_class.new(data_with_setup, dir)
+      expect(config_with_setup.setup_command).to eq('bundle install')
+    end
+  end
+
+  describe '#lint_check_command' do
+    it 'strips -A from rubocop command' do
+      config = described_class.new({ stack: { lint_command: 'bundle exec rubocop -A' } }, dir)
+      expect(config.lint_check_command).to eq('bundle exec rubocop')
+    end
+
+    it 'strips --fix from eslint command' do
+      config = described_class.new({ stack: { lint_command: 'npx eslint --fix .' } }, dir)
+      expect(config.lint_check_command).to eq('npx eslint .')
+    end
+
+    it 'strips --write from biome command' do
+      config = described_class.new({ stack: { lint_command: 'npx biome check --write' } }, dir)
+      expect(config.lint_check_command).to eq('npx biome check')
+    end
+
+    it 'strips --allow-dirty from clippy command' do
+      config = described_class.new({ stack: { lint_command: 'cargo clippy --fix --allow-dirty' } }, dir)
+      expect(config.lint_check_command).to eq('cargo clippy')
+    end
+
+    it 'returns nil when no lint command configured' do
+      config = described_class.new({}, dir)
+      expect(config.lint_check_command).to be_nil
+    end
   end
 
   describe 'pipeline defaults' do

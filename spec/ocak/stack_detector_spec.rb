@@ -52,6 +52,10 @@ RSpec.describe Ocak::StackDetector do
     it 'returns nil for format_command (rubocop handles it)' do
       expect(result.format_command).to be_nil
     end
+
+    it 'detects bundle install as setup command' do
+      expect(result.setup_command).to eq('bundle install')
+    end
   end
 
   context 'with a Ruby/Sinatra project' do
@@ -102,6 +106,11 @@ RSpec.describe Ocak::StackDetector do
 
     it 'detects npm audit' do
       expect(result.security_commands).to include('npm audit --omit=dev')
+    end
+
+    it 'detects npm install as setup command' do
+      write_file('package-lock.json', '{}')
+      expect(result.setup_command).to eq('npm install')
     end
   end
 

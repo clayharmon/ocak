@@ -32,6 +32,15 @@ module Ocak
     def test_command   = dig(:stack, :test_command)
     def lint_command   = dig(:stack, :lint_command)
     def format_command = dig(:stack, :format_command)
+    def setup_command  = dig(:stack, :setup_command)
+
+    # Returns the lint command with auto-fix flags stripped, suitable for check-only verification.
+    def lint_check_command
+      cmd = lint_command
+      return nil unless cmd
+
+      cmd.gsub(/\s+(?:-A|--fix|--write|--allow-dirty)\b/, '').strip
+    end
 
     def security_commands
       dig(:stack, :security_commands) || []

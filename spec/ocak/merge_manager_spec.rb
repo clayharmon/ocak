@@ -31,6 +31,13 @@ RSpec.describe Ocak::MergeManager do
     let(:success_status) { instance_double(Process::Status, success?: true) }
     let(:failure_status) { instance_double(Process::Status, success?: false) }
 
+    # All contexts need the commit_uncommitted_changes stub (clean worktree by default)
+    before do
+      allow(Open3).to receive(:capture3)
+        .with('git', 'status', '--porcelain', chdir: worktree.path)
+        .and_return(['', '', success_status])
+    end
+
     context 'when everything succeeds' do
       before do
         # Rebase
@@ -129,6 +136,53 @@ RSpec.describe Ocak::MergeManager do
 
       it 'returns false' do
         expect(manager.merge(42, worktree)).to be false
+      end
+    end
+
+    context 'when worktree has uncommitted changes' do
+      before do
+        # Dirty worktree
+        allow(Open3).to receive(:capture3)
+          .with('git', 'status', '--porcelain', chdir: worktree.path)
+          .and_return(["M  some_file.rb\n?? new_file.rb\n", '', success_status])
+
+        allow(Open3).to receive(:capture3)
+          .with('git', 'add', '-A', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'commit', '-m', 'chore: uncommitted pipeline changes for issue #42', chdir: worktree.path)
+          .and_return(['', '', success_status])
+
+        # Rest of merge flow succeeds
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(claude).to receive(:run_agent)
+          .and_return(Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Merged'))
+      end
+
+      it 'commits changes before rebase' do
+        expect(Open3).to receive(:capture3)
+          .with('git', 'add', '-A', chdir: worktree.path)
+          .ordered
+        expect(Open3).to receive(:capture3)
+          .with('git', 'commit', '-m', 'chore: uncommitted pipeline changes for issue #42', chdir: worktree.path)
+          .ordered
+
+        manager.merge(42, worktree)
+      end
+
+      it 'returns true when merge succeeds' do
+        expect(manager.merge(42, worktree)).to be true
       end
     end
   end

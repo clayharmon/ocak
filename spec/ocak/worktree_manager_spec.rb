@@ -32,6 +32,35 @@ RSpec.describe Ocak::WorktreeManager do
 
       expect { manager.create(42) }.to raise_error(Ocak::WorktreeManager::WorktreeError)
     end
+
+    it 'runs setup command after creating worktree' do
+      allow(FileUtils).to receive(:mkdir_p)
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'add', '-b', anything, anything, 'main', chdir: '/project')
+        .and_return(['', '', instance_double(Process::Status, success?: true)])
+      allow(Open3).to receive(:capture3)
+        .with('bundle', 'install', chdir: '/project/.claude/worktrees/issue-42')
+        .and_return(['', '', instance_double(Process::Status, success?: true)])
+
+      worktree = manager.create(42, setup_command: 'bundle install')
+
+      expect(worktree.path).to eq('/project/.claude/worktrees/issue-42')
+      expect(Open3).to have_received(:capture3)
+        .with('bundle', 'install', chdir: '/project/.claude/worktrees/issue-42')
+    end
+
+    it 'raises when setup command fails' do
+      allow(FileUtils).to receive(:mkdir_p)
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'add', '-b', anything, anything, 'main', chdir: '/project')
+        .and_return(['', '', instance_double(Process::Status, success?: true)])
+      allow(Open3).to receive(:capture3)
+        .with('bundle', 'install', chdir: '/project/.claude/worktrees/issue-42')
+        .and_return(['', 'install failed', instance_double(Process::Status, success?: false)])
+
+      expect { manager.create(42, setup_command: 'bundle install') }
+        .to raise_error(Ocak::WorktreeManager::WorktreeError, /Setup command failed/)
+    end
   end
 
   describe '#remove' do

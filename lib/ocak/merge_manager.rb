@@ -16,6 +16,8 @@ module Ocak
     def merge(issue_number, worktree)
       @logger.info("Starting merge for issue ##{issue_number}")
 
+      commit_uncommitted_changes(issue_number, worktree)
+
       unless rebase_onto_main(worktree)
         @logger.error("Rebase failed for issue ##{issue_number}")
         return false
@@ -47,6 +49,22 @@ module Ocak
     end
 
     private
+
+    def commit_uncommitted_changes(issue_number, worktree)
+      stdout, = git('status', '--porcelain', chdir: worktree.path)
+      return if stdout.strip.empty?
+
+      @logger.info('Found uncommitted changes, committing before merge...')
+      git('add', '-A', chdir: worktree.path)
+      _, stderr, status = git('commit', '-m', "chore: uncommitted pipeline changes for issue ##{issue_number}",
+                              chdir: worktree.path)
+
+      if status.success?
+        @logger.info('Committed uncommitted changes')
+      else
+        @logger.warn("Commit of uncommitted changes failed: #{stderr[0..200]}")
+      end
+    end
 
     def rebase_onto_main(worktree)
       git('fetch', 'origin', 'main', chdir: worktree.path)
