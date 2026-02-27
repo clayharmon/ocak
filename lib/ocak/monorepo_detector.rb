@@ -23,7 +23,8 @@ module Ocak
 
       pkg = begin
         JSON.parse(read_file('package.json'))
-      rescue JSON::ParserError
+      rescue JSON::ParserError => e
+        warn("Failed to parse package.json: #{e.message}")
         {}
       end
       workspaces = pkg['workspaces']
@@ -63,7 +64,8 @@ module Ocak
 
       lerna = begin
         JSON.parse(read_file('lerna.json'))
-      rescue JSON::ParserError
+      rescue JSON::ParserError => e
+        warn("Failed to parse lerna.json: #{e.message}")
         {}
       end
       expand_workspace_globs(lerna['packages'] || ['packages/*'])

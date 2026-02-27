@@ -25,7 +25,8 @@ module Ocak
       issues.reject! { |i| in_progress?(i) }
       issues.select! { |i| authorized_issue?(i) }
       issues
-    rescue JSON::ParserError
+    rescue JSON::ParserError => e
+      @logger&.warn("Failed to parse issue list JSON: #{e.message}")
       []
     end
 
@@ -55,7 +56,8 @@ module Ocak
       return nil unless status.success?
 
       JSON.parse(stdout)
-    rescue JSON::ParserError
+    rescue JSON::ParserError => e
+      @logger&.warn("Failed to parse issue view JSON: #{e.message}")
       nil
     end
 
@@ -115,7 +117,8 @@ module Ocak
       return [] unless status.success?
 
       JSON.parse(stdout).fetch('comments', [])
-    rescue JSON::ParserError
+    rescue JSON::ParserError => e
+      @logger&.warn("Failed to parse issue comments JSON: #{e.message}")
       []
     end
 

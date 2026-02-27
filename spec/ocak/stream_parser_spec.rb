@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe Ocak::StreamParser do
-  let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil) }
+  let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, debug: nil) }
 
   subject(:parser) { described_class.new('reviewer', logger) }
 

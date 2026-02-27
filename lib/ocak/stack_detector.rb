@@ -184,7 +184,8 @@ module Ocak
       @pkg_json ||= begin
         raw = read_file('package.json')
         raw.empty? ? {} : JSON.parse(raw)
-      rescue JSON::ParserError
+      rescue JSON::ParserError => e
+        warn("Failed to parse package.json: #{e.message}")
         {}
       end
       deps = (@pkg_json['dependencies'] || {}).merge(@pkg_json['devDependencies'] || {})
