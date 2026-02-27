@@ -46,6 +46,8 @@ module Ocak
       logger = build_logger(issue_number: issue_number)
       claude = build_claude(logger)
       issues = IssueFetcher.new(config: @config)
+      ensure_labels(issues, logger)
+      @executor.issues = issues
       logger.info("Running single issue mode for ##{issue_number}")
 
       if @options[:dry_run]
@@ -76,6 +78,8 @@ module Ocak
     def run_loop
       logger = build_logger
       issues = IssueFetcher.new(config: @config, logger: logger)
+      ensure_labels(issues, logger)
+      @executor.issues = issues
       cleanup_stale_worktrees(logger)
 
       loop do
@@ -233,6 +237,12 @@ module Ocak
       removed.each { |path| logger.info("Cleaned stale worktree: #{path}") }
     rescue StandardError => e
       logger.warn("Stale worktree cleanup failed: #{e.message}")
+    end
+
+    def ensure_labels(issues, logger)
+      issues.ensure_labels(@config.all_labels)
+    rescue StandardError => e
+      logger.warn("Failed to ensure labels: #{e.message}")
     end
 
     def build_logger(issue_number: nil)

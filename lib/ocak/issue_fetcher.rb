@@ -110,6 +110,16 @@ module Ocak
       status.success?
     end
 
+    def ensure_labels(labels)
+      labels.each { |label| ensure_label(label) }
+    end
+
+    def ensure_label(label)
+      Open3.capture3('gh', 'label', 'create', label, '--force', chdir: @config.project_dir) # --force: update if exists
+    rescue StandardError => e
+      @logger&.warn("Failed to create label '#{label}': #{e.message}")
+    end
+
     def view(issue_number, fields: 'number,title,body,labels')
       stdout, _, status = Open3.capture3(
         'gh', 'issue', 'view', issue_number.to_s,
