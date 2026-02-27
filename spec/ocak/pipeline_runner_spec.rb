@@ -25,6 +25,7 @@ RSpec.describe Ocak::PipelineRunner do
                     lint_check_command: nil,
                     setup_command: nil,
                     language: 'ruby',
+                    all_labels: %w[auto-ready in-progress completed pipeline-failed auto-reready auto-pending-human],
                     steps: [
                       { 'agent' => 'implementer', 'role' => 'implement' },
                       { 'agent' => 'reviewer', 'role' => 'review' },
@@ -49,6 +50,8 @@ RSpec.describe Ocak::PipelineRunner do
       .with('git', 'rev-parse', '--abbrev-ref', 'HEAD', chdir: anything)
       .and_return(["main\n", '', instance_double(Process::Status, success?: true)])
     allow(FileUtils).to receive(:mkdir_p)
+    allow(issues).to receive(:ensure_labels)
+    allow(issues).to receive(:comment)
   end
 
   describe 'single issue mode' do
@@ -83,6 +86,31 @@ RSpec.describe Ocak::PipelineRunner do
       runner_dry.run
 
       expect(claude).not_to have_received(:run_agent) if claude.respond_to?(:run_agent)
+    end
+  end
+
+  describe 'label auto-creation' do
+    it 'calls ensure_labels in single issue mode' do
+      runner = described_class.new(config: config, options: { single: 42 })
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(issues).to receive(:transition)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      runner.run
+
+      expect(issues).to have_received(:ensure_labels).with(config.all_labels)
+    end
+
+    it 'calls ensure_labels in run_loop mode' do
+      runner = described_class.new(config: config, options: { once: true })
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(Ocak::WorktreeManager).to receive(:new)
+        .and_return(instance_double(Ocak::WorktreeManager, clean_stale: []))
+      allow(issues).to receive(:fetch_ready).and_return([])
+
+      runner.run
+
+      expect(issues).to have_received(:ensure_labels).with(config.all_labels)
     end
   end
 

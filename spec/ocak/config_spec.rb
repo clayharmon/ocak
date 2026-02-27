@@ -121,7 +121,7 @@ RSpec.describe Ocak::Config do
     end
 
     it 'defaults in_progress label' do
-      expect(config.label_in_progress).to eq('in-progress')
+      expect(config.label_in_progress).to eq('auto-doing')
     end
 
     it 'defaults completed label' do
@@ -164,6 +164,21 @@ RSpec.describe Ocak::Config do
     it 'respects custom awaiting_review label' do
       config_with_awaiting = described_class.new({ labels: { awaiting_review: 'pending' } }, dir)
       expect(config_with_awaiting.label_awaiting_review).to eq('pending')
+    end
+
+    it 'respects explicit in_progress override' do
+      config_with_ip = described_class.new({ labels: { in_progress: 'in-progress' } }, dir)
+      expect(config_with_ip.label_in_progress).to eq('in-progress')
+    end
+  end
+
+  describe '#all_labels' do
+    subject(:config) { described_class.new({}, dir) }
+
+    it 'returns all configured labels' do
+      expect(config.all_labels).to contain_exactly(
+        'auto-ready', 'auto-doing', 'completed', 'pipeline-failed', 'auto-reready', 'auto-pending-human'
+      )
     end
   end
 

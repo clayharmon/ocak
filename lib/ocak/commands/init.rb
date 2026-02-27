@@ -5,6 +5,7 @@ require 'fileutils'
 require_relative '../stack_detector'
 require_relative '../agent_generator'
 require_relative '../config'
+require_relative '../issue_fetcher'
 
 module Ocak
   module Commands
@@ -36,6 +37,7 @@ module Ocak
         generate_files(generator, project_dir, options)
         update_settings(project_dir, stack)
         update_gitignore(project_dir)
+        create_labels(project_dir)
 
         puts ''
         print_summary(project_dir, stack, options)
@@ -172,6 +174,15 @@ module Ocak
           new_lines.each { |line| f.puts line }
         end
         puts '  Updated .gitignore'
+      end
+
+      def create_labels(project_dir)
+        config = Config.load(project_dir)
+        fetcher = IssueFetcher.new(config: config)
+        fetcher.ensure_labels(config.all_labels)
+        puts '  Created GitHub labels'
+      rescue StandardError => e
+        puts "  Warning: could not create labels: #{e.message}"
       end
 
       def print_summary(_project_dir, _stack, options)

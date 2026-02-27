@@ -12,8 +12,11 @@ module Ocak
 
     StepContext = Struct.new(:issue_number, :idx, :role, :result, :state, :logger, :chdir)
 
-    def initialize(config:)
+    attr_writer :issues
+
+    def initialize(config:, issues: nil)
       @config = config
+      @issues = issues
     end
 
     def run_pipeline(issue_number, logger:, claude:, chdir: nil, skip_steps: [], complexity: 'full')
@@ -28,7 +31,7 @@ module Ocak
       log_cost_summary(state[:total_cost], logger)
       return failure if failure
 
-      failure = run_final_verification(logger: logger, claude: claude, chdir: chdir)
+      failure = run_final_verification(issue_number, logger: logger, claude: claude, chdir: chdir)
       return failure if failure
 
       pipeline_state.delete(issue_number)
@@ -64,6 +67,7 @@ module Ocak
       agent = step[:agent].to_s
       role = step[:role].to_s
       logger.info("--- Phase: #{role} (#{agent}) ---")
+      post_step_comment(issue_number, "\u{1F504} **Phase: #{role}** (#{agent})")
       prompt = build_step_prompt(role, issue_number, review_output)
       claude.run_agent(agent.tr('_', '-'), prompt, chdir: chdir)
     end
@@ -73,6 +77,7 @@ module Ocak
       ctx.state[:completed_steps] << ctx.idx
       ctx.state[:total_cost] += ctx.result.cost_usd.to_f
       save_step_progress(ctx)
+      post_step_completion_comment(ctx)
 
       check_step_failure(ctx) || check_cost_budget(ctx.state, ctx.logger)
     end
@@ -135,21 +140,30 @@ module Ocak
       end
     end
 
-    def run_final_verification(logger:, claude:, chdir:)
+    def run_final_verification(issue_number, logger:, claude:, chdir:)
       return nil unless @config.test_command || @config.lint_check_command
 
       logger.info('--- Final verification ---')
+      post_step_comment(issue_number, "\u{1F504} **Phase: final-verify** (verification)")
+      start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result = run_final_checks(logger, chdir: chdir)
-      return nil if result[:success]
 
-      logger.warn('Final checks failed, attempting fix...')
-      claude.run_agent('implementer',
-                       "Fix these test/lint failures:\n\n#{result[:output]}",
-                       chdir: chdir)
-      result = run_final_checks(logger, chdir: chdir)
-      return nil if result[:success]
+      unless result[:success]
+        logger.warn('Final checks failed, attempting fix...')
+        claude.run_agent('implementer',
+                         "Fix these test/lint failures:\n\n#{result[:output]}",
+                         chdir: chdir)
+        result = run_final_checks(logger, chdir: chdir)
+      end
 
-      { success: false, phase: 'final-verify', output: result[:output] }
+      duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
+      if result[:success]
+        post_step_comment(issue_number, "\u{2705} **Phase: final-verify** completed \u{2014} #{duration}s")
+        nil
+      else
+        post_step_comment(issue_number, "\u{274C} **Phase: final-verify** failed \u{2014} #{duration}s")
+        { success: false, phase: 'final-verify', output: result[:output] }
+      end
     end
 
     def log_cost_summary(total_cost, logger)
@@ -169,6 +183,24 @@ module Ocak
       stdout.strip
     rescue StandardError
       nil
+    end
+
+    def post_step_comment(issue_number, body)
+      @issues&.comment(issue_number, body)
+    rescue StandardError
+      nil # comment failures must never crash the pipeline
+    end
+
+    def post_step_completion_comment(ctx)
+      duration = (ctx.result.duration_ms.to_f / 1000).round
+      cost = format('%.3f', ctx.result.cost_usd.to_f)
+      if ctx.result.success?
+        post_step_comment(ctx.issue_number,
+                          "\u{2705} **Phase: #{ctx.role}** completed \u{2014} #{duration}s | $#{cost}")
+      else
+        post_step_comment(ctx.issue_number,
+                          "\u{274C} **Phase: #{ctx.role}** failed \u{2014} #{duration}s | $#{cost}")
+      end
     end
 
     def symbolize(hash)

@@ -79,9 +79,9 @@ The planner classifies each issue as `simple` or `full`. Simple issues skip step
 ### Label State Machine
 
 ```
-auto-ready ──→ in-progress ──→ completed
-                    │
-                    └──→ pipeline-failed
+auto-ready ──→ auto-doing ──→ completed
+                   │
+                   └──→ pipeline-failed
 ```
 
 ## Configuration
@@ -117,7 +117,7 @@ safety:
 # GitHub labels
 labels:
   ready: "auto-ready"
-  in_progress: "in-progress"
+  in_progress: "auto-doing"
   completed: "completed"
   failed: "pipeline-failed"
 
@@ -280,7 +280,7 @@ Runs the full pipeline for issue #42 in your current checkout (no worktree).
 
 **How do I pause it?**
 
-Kill the `ocak run` process. Issues that are `in-progress` will keep their label — remove it manually or let the next run pick them back up.
+Kill the `ocak run` process. Issues that are `auto-doing` will keep their label — remove it manually or let the next run pick them back up.
 
 **What languages does it support?**
 

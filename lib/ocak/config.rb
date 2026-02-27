@@ -61,11 +61,15 @@ module Ocak
 
     # Labels
     def label_ready = dig(:labels, :ready) || 'auto-ready'
-    def label_in_progress = dig(:labels, :in_progress) || 'in-progress'
+    def label_in_progress = dig(:labels, :in_progress) || 'auto-doing'
     def label_completed  = dig(:labels, :completed) || 'completed'
     def label_failed     = dig(:labels, :failed) || 'pipeline-failed'
     def label_reready         = dig(:labels, :reready) || 'auto-reready'
     def label_awaiting_review = dig(:labels, :awaiting_review) || 'auto-pending-human'
+
+    def all_labels
+      [label_ready, label_in_progress, label_completed, label_failed, label_reready, label_awaiting_review]
+    end
 
     # Steps
     def steps

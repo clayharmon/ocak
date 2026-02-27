@@ -369,6 +369,38 @@ RSpec.describe Ocak::IssueFetcher do
     end
   end
 
+  describe '#ensure_labels' do
+    it 'calls gh label create --force for each label' do
+      allow(Open3).to receive(:capture3).and_return(['', '', success_status])
+
+      fetcher.ensure_labels(%w[auto-ready auto-doing])
+
+      expect(Open3).to have_received(:capture3)
+        .with('gh', 'label', 'create', 'auto-ready', '--force', chdir: '/project')
+      expect(Open3).to have_received(:capture3)
+        .with('gh', 'label', 'create', 'auto-doing', '--force', chdir: '/project')
+    end
+
+    it 'handles failures gracefully' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'label', 'create', anything, '--force', chdir: '/project')
+        .and_raise(Errno::ENOENT, 'gh not found')
+
+      expect { fetcher.ensure_labels(%w[auto-ready]) }.not_to raise_error
+    end
+  end
+
+  describe '#ensure_label' do
+    it 'calls gh label create --force for a single label' do
+      allow(Open3).to receive(:capture3).and_return(['', '', success_status])
+
+      fetcher.ensure_label('auto-doing')
+
+      expect(Open3).to have_received(:capture3)
+        .with('gh', 'label', 'create', 'auto-doing', '--force', chdir: '/project')
+    end
+  end
+
   describe '#view' do
     it 'returns parsed issue data' do
       issue_json = JSON.generate({ 'number' => 42, 'title' => 'Test', 'body' => 'Description' })
