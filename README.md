@@ -4,7 +4,7 @@
 
 Ocak sets up and runs a multi-agent pipeline that takes GitHub issues from design to merged PR — automatically. Write a well-structured issue, label it, and let the agents implement, review, fix, audit, document, and merge. In parallel.
 
-*Ocak means "forge" in Turkish. Also: let 'em cook.*
+*Ocak (pronounced "oh-JAHK") is Turkish for "forge" or "hearth" — the place where raw material meets fire and becomes something useful. Also: let 'em cook.*
 
 ## Quick Start
 
