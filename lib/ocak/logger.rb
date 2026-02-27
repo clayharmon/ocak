@@ -62,11 +62,8 @@ module Ocak
       @file_logger&.send(level, msg)
 
       @mutex.synchronize do
-        if @color
-          warn colorize(ts, level, msg, agent: agent, color: color)
-        else
-          warn plain
-        end
+        output = @color ? colorize(ts, level, msg, agent: agent, color: color) : plain
+        $stderr.write("#{output}\n")
       end
     end
 

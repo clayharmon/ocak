@@ -2,6 +2,7 @@
 
 require 'json'
 require 'fileutils'
+require 'shellwords'
 
 module Ocak
   class PipelineRunner
@@ -134,6 +135,7 @@ module Ocak
       issue_number = issue['number']
       logger = build_logger(issue_number: issue_number)
       claude = build_claude(logger)
+      worktree = nil
 
       issues.transition(issue_number, from: @config.label_ready, to: @config.label_in_progress)
       worktree = worktrees.create(issue_number)
@@ -266,7 +268,7 @@ module Ocak
       failures = []
 
       commands.each do |cmd|
-        _, _, status = Open3.capture3(cmd, chdir: chdir)
+        _, _, status = Open3.capture3(*Shellwords.shellsplit(cmd), chdir: chdir)
         failures << cmd unless status.success?
       end
 

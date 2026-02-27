@@ -24,8 +24,8 @@ module Ocak
         config = Config.load
 
         # CLI options override config
-        config.data[:pipeline][:max_parallel] = options[:max_parallel] if options[:max_parallel]
-        config.data[:pipeline][:poll_interval] = options[:poll_interval] if options[:poll_interval]
+        config.override(:max_parallel, options[:max_parallel]) if options[:max_parallel]
+        config.override(:poll_interval, options[:poll_interval]) if options[:poll_interval]
 
         runner = PipelineRunner.new(
           config: config,

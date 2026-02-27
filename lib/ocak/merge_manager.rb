@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'open3'
+require 'shellwords'
 
 module Ocak
   class MergeManager
@@ -92,7 +93,7 @@ module Ocak
     end
 
     def shell(cmd, chdir:)
-      Open3.capture3(cmd, chdir: chdir)
+      Open3.capture3(*Shellwords.shellsplit(cmd), chdir: chdir)
     end
   end
 end

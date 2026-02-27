@@ -9,18 +9,21 @@ module Ocak
     def initialize(config:)
       @config = config
       @worktree_base = File.join(config.project_dir, config.worktree_dir)
+      @mutex = Mutex.new
     end
 
     def create(issue_number)
-      FileUtils.mkdir_p(@worktree_base)
+      @mutex.synchronize do
+        FileUtils.mkdir_p(@worktree_base)
 
-      branch = "auto/issue-#{issue_number}-#{SecureRandom.hex(4)}"
-      path = File.join(@worktree_base, "issue-#{issue_number}")
+        branch = "auto/issue-#{issue_number}-#{SecureRandom.hex(4)}"
+        path = File.join(@worktree_base, "issue-#{issue_number}")
 
-      _, stderr, status = git('worktree', 'add', '-b', branch, path, 'main')
-      raise WorktreeError, "Failed to create worktree: #{stderr}" unless status.success?
+        _, stderr, status = git('worktree', 'add', '-b', branch, path, 'main')
+        raise WorktreeError, "Failed to create worktree: #{stderr}" unless status.success?
 
-      Worktree.new(path: path, branch: branch, issue_number: issue_number)
+        Worktree.new(path: path, branch: branch, issue_number: issue_number)
+      end
     end
 
     def remove(worktree)

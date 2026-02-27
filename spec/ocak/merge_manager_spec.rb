@@ -43,7 +43,7 @@ RSpec.describe Ocak::MergeManager do
 
         # Tests
         allow(Open3).to receive(:capture3)
-          .with('bundle exec rspec', chdir: worktree.path)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
           .and_return(['', '', success_status])
 
         # Push
@@ -102,7 +102,7 @@ RSpec.describe Ocak::MergeManager do
           .with('git', 'rebase', 'origin/main', chdir: worktree.path)
           .and_return(['', '', success_status])
         allow(Open3).to receive(:capture3)
-          .with('bundle exec rspec', chdir: worktree.path)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
           .and_return(['', 'failures', failure_status])
       end
 
@@ -120,7 +120,7 @@ RSpec.describe Ocak::MergeManager do
           .with('git', 'rebase', 'origin/main', chdir: worktree.path)
           .and_return(['', '', success_status])
         allow(Open3).to receive(:capture3)
-          .with('bundle exec rspec', chdir: worktree.path)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
           .and_return(['', '', success_status])
         allow(Open3).to receive(:capture3)
           .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)

@@ -6,6 +6,8 @@ require 'ocak/stack_detector'
 require 'ocak/worktree_manager'
 require 'ocak/issue_fetcher'
 require 'ocak/merge_manager'
+require 'ocak/process_runner'
+require 'ocak/stream_parser'
 require 'ocak/claude_runner'
 require 'ocak/logger'
 

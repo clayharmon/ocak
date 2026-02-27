@@ -84,7 +84,7 @@ module Ocak
         return 0 unless status.success?
 
         JSON.parse(stdout).size
-      rescue StandardError
+      rescue JSON::ParserError, Errno::ENOENT
         0
       end
 

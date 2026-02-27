@@ -6,7 +6,7 @@ module Ocak
   class Config
     CONFIG_FILE = 'ocak.yml'
 
-    attr_reader :data, :project_dir
+    attr_reader :project_dir
 
     def self.load(dir = Dir.pwd)
       path = File.join(dir, CONFIG_FILE)
@@ -18,7 +18,12 @@ module Ocak
     def initialize(data, project_dir = Dir.pwd)
       @data = data || {}
       @project_dir = project_dir
+      @overrides = {}
       validate!
+    end
+
+    def override(key, value)
+      @overrides[key] = value
     end
 
     # Stack
@@ -33,8 +38,8 @@ module Ocak
     end
 
     # Pipeline
-    def max_parallel  = dig(:pipeline, :max_parallel) || 3
-    def poll_interval = dig(:pipeline, :poll_interval) || 60
+    def max_parallel  = @overrides[:max_parallel] || dig(:pipeline, :max_parallel) || 3
+    def poll_interval = @overrides[:poll_interval] || dig(:pipeline, :poll_interval) || 60
     def worktree_dir  = dig(:pipeline, :worktree_dir) || '.claude/worktrees'
     def log_dir       = dig(:pipeline, :log_dir) || 'logs/pipeline'
 
