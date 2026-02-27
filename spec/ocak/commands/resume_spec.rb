@@ -1,0 +1,90 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+require 'dry/cli'
+require 'ocak/commands/resume'
+
+RSpec.describe Ocak::Commands::Resume do
+  subject(:command) { described_class.new }
+
+  let(:config) do
+    instance_double(Ocak::Config,
+                    project_dir: '/project',
+                    label_ready: 'auto-ready',
+                    label_in_progress: 'in-progress',
+                    label_completed: 'completed',
+                    label_failed: 'pipeline-failed',
+                    log_dir: 'logs/pipeline',
+                    poll_interval: 1,
+                    max_parallel: 2,
+                    max_issues_per_run: 5,
+                    cost_budget: nil,
+                    worktree_dir: '.claude/worktrees',
+                    test_command: nil,
+                    lint_command: nil,
+                    lint_check_command: nil,
+                    setup_command: nil,
+                    language: 'ruby',
+                    steps: [{ 'agent' => 'implementer', 'role' => 'implement' }])
+  end
+
+  let(:saved_state) do
+    {
+      completed_steps: [0],
+      worktree_path: '/project/.claude/worktrees/issue-42',
+      branch: 'auto/issue-42-abc'
+    }
+  end
+
+  let(:pipeline_state) { instance_double(Ocak::PipelineState) }
+  let(:runner) { instance_double(Ocak::PipelineRunner) }
+  let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, log_file_path: nil) }
+  let(:claude) { instance_double(Ocak::ClaudeRunner) }
+  let(:issues) { instance_double(Ocak::IssueFetcher) }
+  let(:success_result) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Done') }
+
+  before do
+    allow(Ocak::Config).to receive(:load).and_return(config)
+    allow(Ocak::PipelineState).to receive(:new).and_return(pipeline_state)
+    allow(Ocak::PipelineLogger).to receive(:new).and_return(logger)
+    allow(Ocak::ClaudeRunner).to receive(:new).and_return(claude)
+    allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+    allow(Dir).to receive(:exist?).and_call_original
+    allow(Dir).to receive(:exist?).with('/project/.claude/worktrees/issue-42').and_return(true)
+  end
+
+  context 'with saved state' do
+    before do
+      allow(pipeline_state).to receive(:load).with(42).and_return(saved_state)
+      allow(issues).to receive(:transition)
+      allow(issues).to receive(:comment)
+    end
+
+    it 'prints resume info and runs pipeline' do
+      allow(Ocak::PipelineRunner).to receive(:new).and_return(runner)
+      allow(runner).to receive(:run_pipeline).and_return({ success: true })
+
+      merger = instance_double(Ocak::MergeManager)
+      allow(Ocak::MergeManager).to receive(:new).and_return(merger)
+      allow(merger).to receive(:merge).and_return(true)
+
+      expect { command.call(issue: '42') }.to output(/Resuming issue #42/).to_stdout
+    end
+  end
+
+  context 'without saved state' do
+    before do
+      allow(pipeline_state).to receive(:load).with(42).and_return(nil)
+    end
+
+    it 'exits with error when no saved state exists' do
+      expect { command.call(issue: '42') }.to raise_error(SystemExit)
+    end
+  end
+
+  it 'exits with error on ConfigNotFound' do
+    allow(Ocak::Config).to receive(:load).and_raise(Ocak::Config::ConfigNotFound, 'not found')
+
+    expect { command.call(issue: '42') }.to raise_error(SystemExit)
+  end
+end
