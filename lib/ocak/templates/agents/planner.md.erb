@@ -26,6 +26,12 @@ For each issue, determine:
 - **Files affected**: Predict which files will be created or modified based on the issue body
 - **Database changes**: Does it require migrations or schema changes?
 - **Shared dependencies**: Does it modify shared code (base classes, utilities, config)?
+- **Complexity**: Classify as `"simple"` or `"full"`
+
+#### Complexity Classification
+
+- **simple**: Single-file changes, typo/copy fixes, config tweaks, dependency bumps, small bug fixes with obvious scope, documentation-only changes, renaming
+- **full**: Multi-file features, architectural changes, database migrations, security-sensitive changes, anything touching shared utilities or base classes, new endpoints/routes, changes requiring new tests
 
 ### 3. Conflict Detection
 
@@ -59,7 +65,8 @@ Return valid JSON (no markdown, no code fences):
           "title": "Issue title",
           "area": "module/namespace",
           "predicted_files": ["path/to/file.ext"],
-          "has_migration": false
+          "has_migration": false,
+          "complexity": "simple"
         }
       ],
       "reasoning": "Why these can run in parallel"
@@ -76,3 +83,4 @@ Return valid JSON (no markdown, no code fences):
 - When in doubt, serialize — false negatives (missed parallelism) are safer than false positives (merge conflicts)
 - Issues with migrations always go in separate batches unless they touch completely different schemas
 - If only one issue exists, output a single batch with one issue
+- When in doubt about complexity, use `"full"` — it's safer to run extra steps than to skip needed ones

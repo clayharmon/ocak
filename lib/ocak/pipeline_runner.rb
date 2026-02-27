@@ -180,16 +180,10 @@ module Ocak
       worktree = worktrees.create(issue_number, setup_command: @config.setup_command)
       logger.info("Created worktree at #{worktree.path} (branch: #{worktree.branch})")
 
-      result = run_pipeline(issue_number, logger: logger, claude: claude, chdir: worktree.path)
+      result = run_pipeline(issue_number, logger: logger, claude: claude, chdir: worktree.path,
+                                          complexity: issue.fetch('complexity', 'full'))
 
-      if result[:success]
-        { issue_number: issue_number, success: true, worktree: worktree }
-      else
-        issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
-        issues.comment(issue_number,
-                       "Pipeline failed at phase: #{result[:phase]}\n\n```\n#{result[:output][0..1000]}\n```")
-        { issue_number: issue_number, success: false, worktree: worktree }
-      end
+      build_issue_result(result, issue_number: issue_number, worktree: worktree, issues: issues)
     rescue StandardError => e
       logger.error("Unexpected error: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
       issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
@@ -198,13 +192,25 @@ module Ocak
       @active_mutex.synchronize { @active_issues.delete(issue_number) }
     end
 
+    def build_issue_result(result, issue_number:, worktree:, issues:)
+      if result[:success]
+        { issue_number: issue_number, success: true, worktree: worktree }
+      else
+        issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
+        issues.comment(issue_number,
+                       "Pipeline failed at phase: #{result[:phase]}\n\n```\n#{result[:output][0..1000]}\n```")
+        { issue_number: issue_number, success: false, worktree: worktree }
+      end
+    end
+
     # --- Pipeline Execution ---
 
-    def run_pipeline(issue_number, logger:, claude:, chdir: nil, skip_steps: [])
+    def run_pipeline(issue_number, logger:, claude:, chdir: nil, skip_steps: [], complexity: 'full')
       chdir ||= @config.project_dir
-      logger.info("=== Starting pipeline for issue ##{issue_number} ===")
+      logger.info("=== Starting pipeline for issue ##{issue_number} (#{complexity}) ===")
 
-      state = { last_review_output: nil, had_fixes: false, completed_steps: [], total_cost: 0.0 }
+      state = { last_review_output: nil, had_fixes: false, completed_steps: [], total_cost: 0.0,
+                complexity: complexity }
 
       failure = run_pipeline_steps(issue_number, state, logger: logger, claude: claude, chdir: chdir,
                                                         skip_steps: skip_steps)
@@ -278,6 +284,10 @@ module Ocak
       role = step[:role].to_s
       condition = step[:condition]
 
+      if step[:complexity] == 'full' && state[:complexity] == 'simple'
+        logger.info("Skipping #{role} — fast-track issue")
+        return true
+      end
       if condition == 'has_findings' && !state[:last_review_output]&.include?("\u{1F534}")
         logger.info("Skipping #{role} — no blocking findings")
         return true

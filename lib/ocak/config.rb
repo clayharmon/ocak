@@ -96,9 +96,9 @@ module Ocak
         { agent: 'implementer', role: 'fix', condition: 'has_findings' },
         { agent: 'reviewer', role: 'verify', condition: 'had_fixes' },
         { agent: 'security_reviewer', role: 'security' },
-        { agent: 'implementer', role: 'fix', condition: 'has_findings' },
-        { agent: 'documenter', role: 'document' },
-        { agent: 'auditor', role: 'audit' },
+        { agent: 'implementer', role: 'fix', condition: 'has_findings', complexity: 'full' },
+        { agent: 'documenter', role: 'document', complexity: 'full' },
+        { agent: 'auditor', role: 'audit', complexity: 'full' },
         { agent: 'merger', role: 'merge' }
       ]
     end

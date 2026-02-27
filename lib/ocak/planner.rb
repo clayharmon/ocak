@@ -58,7 +58,11 @@ module Ocak
     end
 
     def sequential_batches(issues)
-      issues.map.with_index { |i, idx| { 'batch' => idx + 1, 'issues' => [i] } }
+      issues.map.with_index do |i, idx|
+        issue = i.dup
+        issue['complexity'] ||= 'full'
+        { 'batch' => idx + 1, 'issues' => [issue] }
+      end
     end
   end
 end

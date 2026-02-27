@@ -133,6 +133,70 @@ RSpec.describe Ocak::PipelineRunner do
     end
   end
 
+  describe 'complexity-based step skipping' do
+    let(:steps_with_complexity) do
+      [
+        { 'agent' => 'implementer', 'role' => 'implement' },
+        { 'agent' => 'reviewer', 'role' => 'review' },
+        { 'agent' => 'security_reviewer', 'role' => 'security' },
+        { 'agent' => 'documenter', 'role' => 'document', 'complexity' => 'full' },
+        { 'agent' => 'auditor', 'role' => 'audit', 'complexity' => 'full' },
+        { 'agent' => 'merger', 'role' => 'merge' }
+      ]
+    end
+
+    before do
+      allow(config).to receive(:steps).and_return(steps_with_complexity)
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(issues).to receive(:transition)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+    end
+
+    it 'skips full-complexity steps for simple issues' do
+      runner = described_class.new(config: config, options: { single: 10 })
+
+      # Patch run_single to pass complexity through
+      allow(runner).to receive(:run_pipeline).and_wrap_original do |method, *args, **kwargs|
+        method.call(*args, **kwargs, complexity: 'simple')
+      end
+
+      runner.run
+
+      expect(claude).not_to have_received(:run_agent).with('documenter', anything, chdir: anything)
+      expect(claude).not_to have_received(:run_agent).with('auditor', anything, chdir: anything)
+    end
+
+    it 'runs full-complexity steps for full issues' do
+      runner = described_class.new(config: config, options: { single: 10 })
+      runner.run
+
+      expect(claude).to have_received(:run_agent).with('documenter', anything, chdir: anything)
+      expect(claude).to have_received(:run_agent).with('auditor', anything, chdir: anything)
+    end
+
+    it 'always runs steps without complexity tag' do
+      runner = described_class.new(config: config, options: { single: 10 })
+
+      allow(runner).to receive(:run_pipeline).and_wrap_original do |method, *args, **kwargs|
+        method.call(*args, **kwargs, complexity: 'simple')
+      end
+
+      runner.run
+
+      expect(claude).to have_received(:run_agent).with('implementer', anything, chdir: anything)
+      expect(claude).to have_received(:run_agent).with('reviewer', anything, chdir: anything)
+      expect(claude).to have_received(:run_agent).with('security-reviewer', anything, chdir: anything)
+    end
+
+    it 'defaults to full complexity when not specified' do
+      runner = described_class.new(config: config, options: { single: 10 })
+      runner.run
+
+      # All steps run including full-complexity ones
+      expect(claude).to have_received(:run_agent).with('documenter', anything, chdir: anything)
+    end
+  end
+
   describe 'planner' do
     subject(:runner) { described_class.new(config: config, options: { once: true }) }
 

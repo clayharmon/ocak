@@ -66,10 +66,13 @@ steps:
   - agent: implementer
     role: fix
     condition: has_findings
+    complexity: full          # skipped for simple issues
   - agent: documenter
     role: document
+    complexity: full          # skipped for simple issues
   - agent: auditor
     role: audit
+    complexity: full          # skipped for simple issues
   - agent: merger
     role: merge
 
