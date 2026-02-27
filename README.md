@@ -1,10 +1,8 @@
 # Ocak
 
-**Autonomous GitHub issue processing pipeline using Claude Code.**
-
-Ocak sets up and runs a multi-agent pipeline that takes GitHub issues from design to merged PR — automatically. Write a well-structured issue, label it, and let the agents implement, review, fix, audit, document, and merge. In parallel.
-
 *Ocak (pronounced "oh-JAHK") is Turkish for "forge" or "hearth" — the place where raw material meets fire and becomes something useful. Also: let 'em cook.*
+
+Multi-agent pipeline that processes GitHub issues autonomously with Claude Code. You write an issue, label it, and ocak runs it through implement -> review -> fix -> security review -> document -> audit -> merge. Each issue gets its own worktree so they can run in parallel.
 
 ## Quick Start
 
@@ -40,15 +38,15 @@ ocak run --single 42 --watch
                               per issue  reviews     rebase+merge
 ```
 
-1. **Design** — Use `/design` in Claude Code to create implementation-ready issues
-2. **Label** — Issues get the `auto-ready` label
-3. **Plan** — The planner agent groups parallelizable issues into batches
-4. **Execute** — Each issue gets its own git worktree and runs through the pipeline
-5. **Merge** — Completed work is rebased, tested, and merged sequentially
+1. **Design** — `/design` in Claude Code walks you through creating an issue thats detailed enough for agents to work from
+2. **Label** — slap the `auto-ready` label on it
+3. **Plan** — planner agent figures out which issues can safely run in parallel
+4. **Execute** — each issue gets a worktree, runs through the pipeline steps
+5. **Merge** — completed work gets rebased, tested, and merged sequentially
 
 ### Agents
 
-Ocak uses 8 specialized agents, each with scoped tool permissions:
+8 agents, each with scoped tool permisions:
 
 | Agent | Role | Tools | Model |
 |-------|------|-------|-------|
@@ -63,12 +61,12 @@ Ocak uses 8 specialized agents, each with scoped tool permissions:
 
 ### Skills
 
-Interactive Claude Code skills for human-in-the-loop work:
+Interactive skills for when you want to be in the loop:
 
-- **`/design`** — Research codebase, ask clarifying questions, produce an implementation-ready issue
-- **`/audit [scope]`** — Comprehensive codebase sweep (security, patterns, tests, data, dependencies)
-- **`/scan-file <path>`** — Deep single-file analysis with test coverage check
-- **`/debt`** — Technical debt tracker with risk scoring
+- `/design` — walks through your codebase, asks questions, produces a detailed issue
+- `/audit [scope]` — codebase sweep for security, patterns, tests, data, dependencies
+- `/scan-file <path>` — deep single-file analysis with test coverage check
+- `/debt` — tech debt tracker with risk scoring
 
 ### Label State Machine
 
@@ -107,7 +105,7 @@ labels:
   completed: "completed"
   failed: "pipeline-failed"
 
-# Pipeline steps — add, remove, reorder
+# Pipeline steps — add, remove, reorder as you like
 steps:
   - agent: implementer
     role: implement
@@ -115,7 +113,7 @@ steps:
     role: review
   - agent: implementer
     role: fix
-    condition: has_findings     # Only runs if reviewer found 🔴
+    condition: has_findings     # Only runs if reviewer found issues
   - agent: reviewer
     role: verify
     condition: had_fixes        # Only runs if fixes were made
@@ -142,7 +140,7 @@ agents:
 
 ### Swap Agents
 
-Point any agent to a custom file:
+Point any agent at a custom file:
 
 ```yaml
 agents:
@@ -151,7 +149,7 @@ agents:
 
 ### Change Pipeline Steps
 
-Remove steps you don't need, add custom ones, reorder:
+Remove steps you don't need, add your own, reorder them:
 
 ```yaml
 steps:
@@ -180,7 +178,7 @@ model: sonnet
 [Instructions for the agent...]
 ```
 
-Reference it in `ocak.yml`:
+Then reference it in `ocak.yml`:
 
 ```yaml
 agents:
@@ -193,17 +191,15 @@ steps:
 
 ## Writing Good Issues
 
-The `/design` skill produces issues formatted for zero-context agents. Key sections:
+The `/design` skill produces issues formatted for zero-context agents. Think of it as writing a ticket for a contractor who's never seen your codebase — everthing they need should be in the issue body. The key sections:
 
-- **Context** — What part of the system, with specific file paths
-- **Acceptance Criteria** — "When X, then Y" format, each independently testable
-- **Implementation Guide** — Exact files to create/modify
-- **Patterns to Follow** — References to actual files in the codebase
-- **Security Considerations** — Auth, validation, data exposure
-- **Test Requirements** — Specific test cases with file paths
-- **Out of Scope** — Explicit boundaries to prevent scope creep
-
-Think of it as writing a ticket for a contractor who has never seen the codebase. Everything they need should be in the issue body.
+- **Context** — what part of the system, with specific file paths
+- **Acceptance Criteria** — "when X, then Y" format, each independantly testable
+- **Implementation Guide** — exact files to create/modify
+- **Patterns to Follow** — references to actual files in the codebase
+- **Security Considerations** — auth, validation, data exposure
+- **Test Requirements** — specific test cases with file paths
+- **Out of Scope** — explicit boundaries so it doesnt scope creep
 
 ## CLI Reference
 
@@ -225,40 +221,33 @@ ocak debt                         Track technical debt
 
 ## FAQ
 
-### How much does it cost?
+**How much does it cost?**
 
-Each issue typically costs $2-15 in API usage depending on complexity. The implementer (opus) is the most expensive step. Reviews (sonnet) are cheaper. You can monitor costs in the `--watch` output.
+Depends on the issue. Simple stuff is $2-5, complex issues can be $10-15. The implementer runs on opus which is the expensive part, reviews on sonnet are pretty cheap. You can see costs in the `--watch` output.
 
-### Is it safe?
+**Is it safe?**
 
-- Review agents are read-only (no Write/Edit tools)
-- The merger agent creates PRs with full context
-- Sequential merging prevents conflicts
-- Failed pipelines are labeled and logged
-- You can always `--dry-run` first
+Reasonably. Review agents are read-only (no Write/Edit tools), merging is sequential so you don't get conflicts, and failed piplines get labeled and logged. You can always `--dry-run` first to see what it would do.
 
-### What if it breaks?
+**What if it breaks?**
 
-- Issues are labeled `pipeline-failed` with a comment explaining what went wrong
-- Worktrees are cleaned up automatically
-- Run `ocak clean` to remove any stragglers
-- Check `logs/pipeline/` for detailed logs
+Issues get labeled `pipeline-failed` with a comment explaining what went wrong. Worktrees get cleaned up automatically. Run `ocak clean` to remove any stragglers, and check `logs/pipeline/` for detailed logs.
 
-### Can I run one issue manually?
+**Can I run one issue manually?**
 
 ```bash
 ocak run --single 42 --watch
 ```
 
-This runs the full pipeline for issue #42 in your current checkout (no worktree).
+Runs the full pipeline for issue #42 in your current checkout (no worktree).
 
-### How do I pause the pipeline?
+**How do I pause it?**
 
-Just stop the `ocak run` process. Issues that are `in-progress` will stay labeled — remove the label manually or let the next run pick them up.
+Kill the `ocak run` process. Issues that are `in-progress` will keep their label — remove it manually or let the next run pick them back up.
 
-### What languages are supported?
+**What languages does it support?**
 
-`ocak init` detects: Ruby, TypeScript/JavaScript, Python, Rust, Go, Java, Elixir. The agents are generated with stack-specific instructions. For unsupported languages, agents are generated with generic instructions that you can customize.
+`ocak init` auto-detects Ruby, TypeScript/JavaScript, Python, Rust, Go, Java, and Elixir. Agents get generated with stack-specific instructions. For anything else you get generic agents that you can customize.
 
 ## Development
 
@@ -272,8 +261,8 @@ bundle exec rubocop
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub.
+Bug reports and pull requests welcome on GitHub.
 
 ## License
 
-MIT License. See [LICENSE.txt](LICENSE.txt).
+MIT. See [LICENSE.txt](LICENSE.txt).
