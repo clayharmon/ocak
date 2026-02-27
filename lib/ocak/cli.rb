@@ -9,6 +9,7 @@ require_relative 'commands/debt'
 require_relative 'commands/status'
 require_relative 'commands/clean'
 require_relative 'commands/resume'
+require_relative 'commands/hiz'
 
 module Ocak
   module CLI
@@ -23,6 +24,7 @@ module Ocak
       register 'status', Ocak::Commands::Status
       register 'clean',  Ocak::Commands::Clean
       register 'resume', Ocak::Commands::Resume
+      register 'hiz',    Ocak::Commands::Hiz
     end
   end
 end
