@@ -61,9 +61,9 @@ module Ocak
         issues.transition(issue_number, from: config.label_failed, to: config.label_in_progress)
 
         runner = PipelineRunner.new(config: config, options: { watch: options[:watch] })
-        result = runner.send(:run_pipeline, issue_number,
-                             logger: logger, claude: claude, chdir: chdir,
-                             skip_steps: saved[:completed_steps])
+        result = runner.run_pipeline(issue_number,
+                                     logger: logger, claude: claude, chdir: chdir,
+                                     skip_steps: saved[:completed_steps])
 
         ctx = { config: config, issue_number: issue_number, saved: saved, chdir: chdir,
                 issues: issues, claude: claude, logger: logger, watch: watch_formatter }
