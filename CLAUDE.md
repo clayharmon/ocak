@@ -23,6 +23,7 @@ lib/ocak/
 ├── pipeline_state.rb      # Persists per-issue pipeline progress for resume support
 ├── run_report.rb          # Writes per-run JSON reports to .ocak/reports/; RunReport#record_step, #finish, #save, .load_all
 ├── verification.rb        # Final verification checks (tests + scoped lint) extracted module
+├── step_comments.rb       # Shared comment-posting module (StepComments) — included by PipelineExecutor and Hiz
 ├── process_runner.rb      # Subprocess runner with streaming line output and timeout support
 ├── process_registry.rb    # Thread-safe PID registry for subprocess tracking during shutdown
 ├── stream_parser.rb       # Parses NDJSON from `claude --output-format stream-json`
@@ -61,7 +62,7 @@ Parallel issues get separate git worktrees under `.claude/worktrees/`. After all
 All GitHub issue data fetching goes through `IssueFetcher#view`. Classes that need issue data receive an `IssueFetcher` instance via constructor injection (`issues:` keyword param) rather than calling `gh` directly.
 
 ### Pipeline Comments
-Both `pipeline_executor.rb` and `hiz.rb` post GitHub comments at pipeline start, per-step completion, skip events, retry warnings, and pipeline summary. Always use `post_step_comment` (wraps `@issues&.comment` with `rescue StandardError => nil`) so comment failures never crash the pipeline. Emoji vocabulary: 🚀 start, 🔄 in-progress, ✅ success, ❌ failure, ⏭️ skip, ⚠️ warning.
+Comment-posting logic lives in the `StepComments` module (`step_comments.rb`), included by both `PipelineExecutor` and `Hiz`. Includers must provide `@issues` (IssueFetcher or nil) and `@config` (Config). Always use `post_step_comment` (wraps `@issues&.comment` with `rescue StandardError => nil`) so comment failures never crash the pipeline. Emoji vocabulary: 🚀 start, 🔄 in-progress, ✅ success, ❌ failure, ⏭️ skip, ⚠️ warning.
 
 ### Prompt Injection Protection
 All externally-sourced content embedded in agent prompts must be wrapped in XML delimiter tags. This prevents malicious content (e.g., a PR comment saying "IGNORE PREVIOUS INSTRUCTIONS...") from being interpreted as instructions by the agent. Examples: `<issue_body>`, `<review_output>`, `<review_comments>`, `<pr_comments>`. See `planner.rb#build_step_prompt` and `reready_processor.rb#build_feedback_prompt`.
