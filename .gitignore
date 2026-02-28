@@ -13,7 +13,10 @@
 .claude/credentials.json
 /spec/examples.txt
 
-# Ocak / Claude Code
+# Claude Code
 .claude/worktrees/
+
+# Ocak pipeline
 logs/pipeline/
-.ocak/
+.ocak/logs/
+.ocak/reports/
