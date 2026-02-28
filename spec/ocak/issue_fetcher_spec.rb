@@ -150,6 +150,22 @@ RSpec.describe Ocak::IssueFetcher do
         expect(issues.size).to eq(1)
         expect(issues.first['author']['login']).to eq('alice')
       end
+
+      it 'rejects issues from non-allowed authors with a warning' do
+        issues_json = JSON.generate([
+                                      { 'number' => 5, 'title' => 'From Eve',
+                                        'labels' => [{ 'name' => 'auto-ready' }],
+                                        'author' => { 'login' => 'eve' } }
+                                    ])
+
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'issue', 'list', any_args, chdir: '/project')
+          .and_return([issues_json, '', success_status])
+
+        issues = fetcher.fetch_ready
+        expect(issues).to be_empty
+        expect(logger).to have_received(:warn).with(/eve.*not in allowed list/)
+      end
     end
 
     context 'with require_comment configured' do

@@ -155,20 +155,14 @@ module Ocak
       authors = allowed_authors
       author_login = issue.dig('author', 'login')
 
-      if authors.any? && authors.include?(author_login)
-        check_comment_requirement(issue)
-      elsif authors.empty?
-        # Default: current user only
-        if author_login == current_user
-          check_comment_requirement(issue)
-        else
-          @logger&.warn("Skipping issue ##{issue['number']}: author '#{author_login}' not in allowed list")
-          false
-        end
-      else
-        @logger&.warn("Skipping issue ##{issue['number']}: author '#{author_login}' not in allowed list")
-        false
+      if authors.empty?
+        return check_comment_requirement(issue) if author_login == current_user
+      elsif authors.include?(author_login)
+        return check_comment_requirement(issue)
       end
+
+      @logger&.warn("Skipping issue ##{issue['number']}: author '#{author_login}' not in allowed list")
+      false
     end
 
     def check_comment_requirement(issue)
