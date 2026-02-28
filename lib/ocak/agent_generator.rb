@@ -2,6 +2,7 @@
 
 require 'erb'
 require 'fileutils'
+require 'open3'
 
 module Ocak
   class AgentGenerator
