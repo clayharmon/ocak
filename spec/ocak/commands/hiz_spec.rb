@@ -449,8 +449,18 @@ RSpec.describe Ocak::Commands::Hiz do
 
     it 'does not crash when comment posting fails' do
       allow(issues).to receive(:comment).and_raise(StandardError, 'network error')
+      allow(logger).to receive(:debug)
 
       expect { command.call(issue: '42') }.not_to raise_error
+    end
+
+    it 'logs debug message when comment posting fails' do
+      allow(issues).to receive(:comment).and_raise(StandardError, 'network error')
+      allow(logger).to receive(:debug)
+
+      command.call(issue: '42')
+
+      expect(logger).to have_received(:debug).with('Step comment failed: network error').at_least(:once)
     end
   end
 

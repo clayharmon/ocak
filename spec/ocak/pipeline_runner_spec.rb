@@ -34,7 +34,7 @@ RSpec.describe Ocak::PipelineRunner do
                     ])
   end
 
-  let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, log_file_path: nil) }
+  let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, debug: nil, log_file_path: nil) }
   let(:claude) { instance_double(Ocak::ClaudeRunner) }
   let(:issues) { instance_double(Ocak::IssueFetcher) }
   let(:pipeline_state) { instance_double(Ocak::PipelineState, save: nil, delete: nil, load: nil) }

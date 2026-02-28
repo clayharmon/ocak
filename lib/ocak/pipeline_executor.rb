@@ -25,6 +25,7 @@ module Ocak
     end
 
     def run_pipeline(issue_number, logger:, claude:, chdir: nil, skip_steps: [], complexity: 'full')
+      @logger = logger
       chdir ||= @config.project_dir
       logger.info("=== Starting pipeline for issue ##{issue_number} (#{complexity}) ===")
 
@@ -170,8 +171,9 @@ module Ocak
       dir = File.join(@config.project_dir, '.ocak', 'logs', "issue-#{issue_number}")
       FileUtils.mkdir_p(dir)
       File.write(File.join(dir, "step-#{idx}-#{safe_agent}.md"), output)
-    rescue StandardError
-      nil # sidecar write failures must never crash the pipeline
+    rescue StandardError => e
+      @logger&.debug("Step output write failed: #{e.message}")
+      nil
     end
 
     def check_step_failure(ctx)
@@ -237,8 +239,9 @@ module Ocak
     def save_report(report, issue_number, success:, failed_phase: nil)
       report.finish(success: success, failed_phase: failed_phase)
       report.save(issue_number, project_dir: @config.project_dir)
-    rescue StandardError
-      nil # report save failures must never crash the pipeline
+    rescue StandardError => e
+      @logger&.debug("Report save failed: #{e.message}")
+      nil
     end
 
     def pipeline_state

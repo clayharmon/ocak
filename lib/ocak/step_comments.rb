@@ -6,9 +6,10 @@ module Ocak
   # All methods accept an optional `issues:` keyword to override @issues, allowing
   # callers like Hiz to pass issues from a different source (e.g., state.issues).
   module StepComments
-    def post_step_comment(issue_number, body, issues: @issues)
+def post_step_comment(issue_number, body, issues: @issues)
       issues&.comment(issue_number, body)
-    rescue StandardError
+    rescue StandardError => e
+      @logger&.debug("Step comment failed: #{e.message}")
       nil
     end
 
