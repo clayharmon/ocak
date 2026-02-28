@@ -19,11 +19,16 @@ module Ocak
       argument :issue, type: :integer, required: true, desc: 'Issue number to process'
       option :watch, type: :boolean, default: false, desc: 'Stream agent activity to terminal'
 
-      MODEL = 'sonnet'
+      STEP_MODELS = {
+        'implementer' => 'sonnet',
+        'reviewer' => 'haiku',
+        'security-reviewer' => 'sonnet'
+      }.freeze
 
-      STEPS = [
-        { agent: 'implementer', role: 'implement' },
-        { agent: 'reviewer',    role: 'review' },
+      IMPLEMENT_STEP = { agent: 'implementer', role: 'implement' }.freeze
+
+      REVIEW_STEPS = [
+        { agent: 'reviewer',          role: 'review' },
         { agent: 'security-reviewer', role: 'security' }
       ].freeze
 
@@ -66,17 +71,13 @@ module Ocak
       end
 
       def run_agents(issue_number, claude:, logger:, chdir:)
-        STEPS.each do |step|
-          result = run_step(step, issue_number, claude: claude, logger: logger, chdir: chdir)
-          next if result.success?
-
-          if step[:role] == 'implement'
-            logger.error("Implementation failed for issue ##{issue_number}")
-            return { phase: 'implement', output: result.output }
-          end
-
-          logger.warn("#{step[:role]} reported issues but continuing")
+        result = run_step(IMPLEMENT_STEP, issue_number, claude: claude, logger: logger, chdir: chdir)
+        unless result.success?
+          logger.error("Implementation failed for issue ##{issue_number}")
+          return { phase: 'implement', output: result.output }
         end
+
+        run_reviews_in_parallel(issue_number, claude: claude, logger: logger, chdir: chdir)
         nil
       end
 
@@ -88,12 +89,34 @@ module Ocak
         branch
       end
 
+      def run_reviews_in_parallel(issue_number, claude:, logger:, chdir:)
+        threads = REVIEW_STEPS.map do |step|
+          Thread.new do
+            run_step(step, issue_number, claude: claude, logger: logger, chdir: chdir)
+          rescue StandardError => e
+            # Rescue inside the thread so .value returns nil instead of re-raising in the parent
+            logger.error("#{step[:role]} thread failed: #{e.message}")
+            nil
+          end
+        end
+
+        threads.each_with_index do |thread, i|
+          result = thread.value
+          step = REVIEW_STEPS[i]
+          next if result.nil?
+          next if result.success?
+
+          logger.warn("#{step[:role]} reported issues but continuing")
+        end
+      end
+
       def run_step(step, issue_number, claude:, logger:, chdir:)
         agent = step[:agent]
         role = step[:role]
-        logger.info("--- Phase: #{role} (#{agent}) [sonnet] ---")
+        model = STEP_MODELS[agent]
+        logger.info("--- Phase: #{role} (#{agent}) [#{model}] ---")
         prompt = build_prompt(role, issue_number)
-        claude.run_agent(agent, prompt, chdir: chdir, model: MODEL)
+        claude.run_agent(agent, prompt, chdir: chdir, model: model)
       end
 
       def build_prompt(role, issue_number)
@@ -115,7 +138,7 @@ module Ocak
         logger.warn('Final checks failed, attempting fix...')
         claude.run_agent('implementer',
                          "Fix these test/lint failures:\n\n#{result[:output]}",
-                         chdir: chdir, model: MODEL)
+                         chdir: chdir, model: STEP_MODELS['implementer'])
 
         result = run_final_checks(logger, chdir: chdir)
         return nil if result[:success]

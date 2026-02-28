@@ -232,7 +232,7 @@ ocak run [options]                Run the pipeline
   --max-parallel N                Limit concurrency (default: 5)
   --poll-interval N               Seconds between polls (default: 60)
 ocak resume N [--watch]           Resume a failed pipeline from last successful step
-ocak hiz N [--watch]              Fast-mode: Sonnet-only implement+review+security, creates PR (no merge)
+ocak hiz N [--watch]              Fast-mode: implement (sonnet) + parallel review (haiku) + security (sonnet), creates PR (no merge)
 ocak status                       Show pipeline state
 ocak clean                        Remove stale worktrees
 ocak design [description]         Launch issue design session
@@ -244,7 +244,7 @@ ocak debt                         Track technical debt
 
 **What's `ocak hiz`?**
 
-Fast mode. Runs implement + review + security using Sonnet instead of Opus, creates a PR but doesn't merge it. Good for simple issues where you want a quick PR to review yourself. Roughly 5-10x cheaper than the full pipeline.
+Fast mode. Runs implement (sonnet), then reviewer (haiku) and security-reviewer (sonnet) in parallel, and creates a PR without merging. Good for simple issues where you want a quick PR to review yourself. Roughly 5-10x cheaper than the full pipeline.
 
 ```bash
 ocak hiz 42 --watch
