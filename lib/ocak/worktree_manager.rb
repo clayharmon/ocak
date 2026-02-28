@@ -57,7 +57,7 @@ module Ocak
           git('worktree', 'remove', '--force', wt[:path])
           removed << wt[:path]
         rescue StandardError
-          next
+          next # skip failed removal so one bad worktree doesn't abort cleanup of others
         end
       end
       prune
