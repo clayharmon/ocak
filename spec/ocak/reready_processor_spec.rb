@@ -201,5 +201,25 @@ RSpec.describe Ocak::RereadyProcessor do
           .with(10, 'Failed to address feedback automatically. Please check logs.')
       end
     end
+
+    context 'when cleanup checkout to main fails' do
+      before do
+        allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
+        allow(issues).to receive(:fetch_pr_comments).and_return({ comments: [], reviews: [] })
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title,body')
+          .and_return(nil)
+
+        allow(Open3).to receive(:capture3)
+          .with('git', 'checkout', 'main', chdir: '/project')
+          .and_return(['', 'error: pathspec', failure_status])
+      end
+
+      it 'logs a warning but does not crash' do
+        processor.process(pr)
+
+        expect(logger).to have_received(:warn).with(/Cleanup checkout to main failed/)
+      end
+    end
   end
 end

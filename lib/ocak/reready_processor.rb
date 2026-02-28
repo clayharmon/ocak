@@ -126,7 +126,8 @@ module Ocak
     end
 
     def cleanup
-      Open3.capture3('git', 'checkout', 'main', chdir: @config.project_dir)
+      _, stderr, status = Open3.capture3('git', 'checkout', 'main', chdir: @config.project_dir)
+      @logger.warn("Cleanup checkout to main failed: #{stderr}") unless status.success?
     end
 
     def build_feedback_prompt(feedback)

@@ -267,6 +267,69 @@ RSpec.describe Ocak::Commands::Hiz do
     end
   end
 
+  context 'when git add fails during commit_changes' do
+    before do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(Open3).to receive(:capture3)
+        .with('git', 'status', '--porcelain', chdir: '/project')
+        .and_return(["M file.rb\n", '', success_status])
+      allow(Open3).to receive(:capture3)
+        .with('git', 'add', '-A', chdir: '/project')
+        .and_return(['', 'error: unable to index', failure_status])
+    end
+
+    it 'logs a warning and skips commit' do
+      command.call(issue: '42')
+
+      expect(logger).to have_received(:warn).with(/git add failed/)
+      expect(Open3).not_to have_received(:capture3)
+        .with('git', 'commit', '-m', anything, chdir: '/project')
+    end
+  end
+
+  context 'when git commit fails during commit_changes' do
+    before do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(Open3).to receive(:capture3)
+        .with('git', 'status', '--porcelain', chdir: '/project')
+        .and_return(["M file.rb\n", '', success_status])
+      allow(Open3).to receive(:capture3)
+        .with('git', 'add', '-A', chdir: '/project')
+        .and_return(['', '', success_status])
+      allow(Open3).to receive(:capture3)
+        .with('git', 'commit', '-m', 'feat: implement issue #42 [hiz]', chdir: '/project')
+        .and_return(['', 'pre-commit hook failed', failure_status])
+      allow(issues).to receive(:view).with(42).and_return(nil)
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
+              '--head', anything, chdir: '/project')
+        .and_return(["https://github.com/org/repo/pull/1\n", '', success_status])
+    end
+
+    it 'logs a warning' do
+      command.call(issue: '42')
+
+      expect(logger).to have_received(:warn).with(/git commit failed/)
+    end
+  end
+
+  context 'when cleanup checkout to main fails' do
+    before do
+      allow(claude).to receive(:run_agent)
+        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .and_return(failure_result)
+      allow(Open3).to receive(:capture3)
+        .with('git', 'checkout', 'main', chdir: '/project')
+        .and_return(['', 'error: pathspec', failure_status])
+    end
+
+    it 'logs a warning but does not crash' do
+      command.call(issue: '42')
+
+      expect(logger).to have_received(:warn).with(/Cleanup checkout to main failed/)
+    end
+  end
+
   it 'exits with error on ConfigNotFound' do
     allow(Ocak::Config).to receive(:load).and_raise(Ocak::Config::ConfigNotFound, 'not found')
 
