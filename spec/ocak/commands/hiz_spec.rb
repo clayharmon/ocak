@@ -44,14 +44,14 @@ RSpec.describe Ocak::Commands::Hiz do
         .and_return(["https://github.com/org/repo/pull/1\n", '', success_status])
     end
 
-    it 'runs all three agents with sonnet model' do
+    it 'runs implementer on sonnet, reviewer on haiku, security-reviewer on sonnet' do
       command.call(issue: '42')
 
       expect(claude).to have_received(:run_agent)
         .with('implementer', 'Implement GitHub issue #42', chdir: '/project', model: 'sonnet')
       expect(claude).to have_received(:run_agent)
         .with('reviewer', 'Review the changes for GitHub issue #42. Run: git diff main',
-              chdir: '/project', model: 'sonnet')
+              chdir: '/project', model: 'haiku')
       expect(claude).to have_received(:run_agent)
         .with('security-reviewer', 'Security review changes for GitHub issue #42. Run: git diff main',
               chdir: '/project', model: 'sonnet')
@@ -96,8 +96,10 @@ RSpec.describe Ocak::Commands::Hiz do
     it 'does not call reviewer or security' do
       command.call(issue: '42')
 
-      expect(claude).not_to have_received(:run_agent).with('reviewer', anything, anything)
-      expect(claude).not_to have_received(:run_agent).with('security-reviewer', anything, anything)
+      expect(claude).not_to have_received(:run_agent)
+        .with('reviewer', anything, chdir: anything, model: anything)
+      expect(claude).not_to have_received(:run_agent)
+        .with('security-reviewer', anything, chdir: anything, model: anything)
     end
 
     it 'checks out main to restore clean state' do
@@ -112,7 +114,7 @@ RSpec.describe Ocak::Commands::Hiz do
     before do
       allow(claude).to receive(:run_agent).and_return(success_result)
       allow(claude).to receive(:run_agent)
-        .with('reviewer', anything, chdir: '/project', model: 'sonnet')
+        .with('reviewer', anything, chdir: '/project', model: 'haiku')
         .and_return(failure_result)
       allow(issues).to receive(:view).with(42).and_return(nil)
       allow(Open3).to receive(:capture3)
@@ -134,6 +136,48 @@ RSpec.describe Ocak::Commands::Hiz do
       expect(Open3).to have_received(:capture3)
         .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
               '--head', anything, chdir: '/project')
+    end
+  end
+
+  context 'when review thread raises an exception' do
+    before do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(claude).to receive(:run_agent)
+        .with('reviewer', anything, chdir: '/project', model: 'haiku')
+        .and_raise(StandardError, 'connection reset')
+      allow(issues).to receive(:view).with(42).and_return(nil)
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
+              '--head', anything, chdir: '/project')
+        .and_return(["https://github.com/org/repo/pull/1\n", '', success_status])
+    end
+
+    it 'logs the error and continues without crashing' do
+      command.call(issue: '42')
+
+      expect(logger).to have_received(:error).with(/review thread failed: connection reset/)
+      expect(claude).to have_received(:run_agent)
+        .with('security-reviewer', anything, chdir: '/project', model: 'sonnet')
+    end
+  end
+
+  context 'when both review steps run' do
+    before do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(issues).to receive(:view).with(42).and_return(nil)
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
+              '--head', anything, chdir: '/project')
+        .and_return(["https://github.com/org/repo/pull/1\n", '', success_status])
+    end
+
+    it 'invokes both reviewer and security-reviewer' do
+      command.call(issue: '42')
+
+      expect(claude).to have_received(:run_agent)
+        .with('reviewer', anything, chdir: '/project', model: 'haiku')
+      expect(claude).to have_received(:run_agent)
+        .with('security-reviewer', anything, chdir: '/project', model: 'sonnet')
     end
   end
 
