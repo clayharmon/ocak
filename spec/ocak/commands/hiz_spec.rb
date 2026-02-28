@@ -287,6 +287,31 @@ RSpec.describe Ocak::Commands::Hiz do
       expect(claude).to have_received(:run_agent)
         .with('implementer', match(%r{Fix these test/lint failures}), chdir: '/project', model: 'sonnet')
     end
+
+    it 'wraps verification output in XML tags for prompt injection protection' do
+      call_count = 0
+      allow(Open3).to receive(:capture3)
+        .with('bundle', 'exec', 'rspec', chdir: '/project') do
+          call_count += 1
+          if call_count == 1
+            ['FAIL: some test', 'error', failure_status]
+          else
+            ['', '', success_status]
+          end
+        end
+      allow(issues).to receive(:view).with(42).and_return(nil)
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
+              '--head', anything, chdir: '/project')
+        .and_return(["https://github.com/org/repo/pull/1\n", '', success_status])
+
+      command.call(issue: '42')
+
+      expect(claude).to have_received(:run_agent)
+        .with('implementer',
+              match(%r{<verification_output>.*FAIL.*</verification_output>}m),
+              chdir: '/project', model: 'sonnet')
+    end
   end
 
   context 'when git add fails during commit_changes' do
