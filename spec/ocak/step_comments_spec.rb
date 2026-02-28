@@ -47,29 +47,29 @@ RSpec.describe Ocak::StepComments do
       expect(instance.post_step_comment(42, 'hello')).to be_nil
     end
 
-it 'uses explicit issues: override instead of @issues' do
-  override = instance_double(Ocak::IssueFetcher, comment: nil)
+    it 'uses explicit issues: override instead of @issues' do
+      override = instance_double(Ocak::IssueFetcher, comment: nil)
 
-  instance.post_step_comment(42, 'hello', issues: override)
+      instance.post_step_comment(42, 'hello', issues: override)
 
-  expect(override).to have_received(:comment).with(42, 'hello')
-  expect(issues).not_to have_received(:comment)
-end
+      expect(override).to have_received(:comment).with(42, 'hello')
+      expect(issues).not_to have_received(:comment)
+    end
 
-it 'logs debug message when comment posting fails' do
-  allow(issues).to receive(:comment).and_raise(StandardError, 'network error')
+    it 'logs debug message when comment posting fails' do
+      allow(issues).to receive(:comment).and_raise(StandardError, 'network error')
 
-  instance.post_step_comment(42, 'hello')
+      instance.post_step_comment(42, 'hello')
 
-  expect(logger).to have_received(:debug).with('Step comment failed: network error')
-end
+      expect(logger).to have_received(:debug).with('Step comment failed: network error')
+    end
 
-it 'does not crash when @logger is nil and comment posting fails' do
-  instance.logger = nil
-  allow(issues).to receive(:comment).and_raise(StandardError, 'network error')
+    it 'does not crash when @logger is nil and comment posting fails' do
+      instance.logger = nil
+      allow(issues).to receive(:comment).and_raise(StandardError, 'network error')
 
-  expect { instance.post_step_comment(42, 'hello') }.not_to raise_error
-end
+      expect { instance.post_step_comment(42, 'hello') }.not_to raise_error
+    end
   end
 
   describe '#post_step_completion_comment' do
