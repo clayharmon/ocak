@@ -197,6 +197,65 @@ RSpec.describe Ocak::MergeManager do
       end
     end
 
+    context 'when git add fails during commit_uncommitted_changes' do
+      before do
+        # Dirty worktree
+        allow(Open3).to receive(:capture3)
+          .with('git', 'status', '--porcelain', chdir: worktree.path)
+          .and_return(["M  some_file.rb\n", '', success_status])
+
+        allow(Open3).to receive(:capture3)
+          .with('git', 'add', '-A', chdir: worktree.path)
+          .and_return(['', 'error: unable to index', failure_status])
+
+        # Rest of merge flow succeeds
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(claude).to receive(:run_agent)
+          .and_return(Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Merged'))
+      end
+
+      it 'logs a warning and skips commit' do
+        manager.merge(42, worktree)
+
+        expect(logger).to have_received(:warn).with(/git add failed/)
+        expect(Open3).not_to have_received(:capture3)
+          .with('git', 'commit', '-m', anything, chdir: worktree.path)
+      end
+
+      it 'continues with the merge flow' do
+        expect(manager.merge(42, worktree)).to be true
+      end
+    end
+
+    context 'when git fetch origin main fails' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', 'fatal: could not read from remote', failure_status])
+      end
+
+      it 'returns false' do
+        expect(manager.merge(42, worktree)).to be false
+      end
+
+      it 'logs an error' do
+        manager.merge(42, worktree)
+
+        expect(logger).to have_received(:error).with(/git fetch origin main failed/)
+      end
+    end
+
     context 'when worktree has uncommitted changes' do
       before do
         # Dirty worktree
@@ -289,6 +348,24 @@ RSpec.describe Ocak::MergeManager do
           .and_return(["https://github.com/owner/repo/pull/99\n", '', success_status])
 
         manager.create_pr_only(42, worktree)
+      end
+    end
+
+    context 'when git fetch fails' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', 'fatal: could not read from remote', failure_status])
+      end
+
+      it 'returns nil' do
+        expect(manager.create_pr_only(42, worktree)).to be_nil
+      end
+
+      it 'logs an error about fetch failure' do
+        manager.create_pr_only(42, worktree)
+
+        expect(logger).to have_received(:error).with(/git fetch origin main failed/)
       end
     end
 

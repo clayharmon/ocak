@@ -120,7 +120,11 @@ module Ocak
 
         worktrees = WorktreeManager.new(config: config)
         wt = worktrees.create(saved[:issue_number], setup_command: config.setup_command)
-        Open3.capture3('git', 'checkout', saved[:branch], chdir: wt.path)
+        _, stderr, status = Open3.capture3('git', 'checkout', saved[:branch], chdir: wt.path)
+        unless status.success?
+          warn "Failed to checkout branch '#{saved[:branch]}': #{stderr}"
+          exit 1
+        end
         wt.path
       end
     end

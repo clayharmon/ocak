@@ -82,6 +82,52 @@ RSpec.describe Ocak::Commands::Resume do
     end
   end
 
+  context 'when worktree gone and branch checkout fails' do
+    let(:saved_state_no_worktree) do
+      {
+        completed_steps: [0],
+        worktree_path: '/project/.claude/worktrees/issue-42',
+        branch: 'auto/issue-42-abc',
+        issue_number: 42
+      }
+    end
+
+    let(:worktree_obj) do
+      Ocak::WorktreeManager::Worktree.new(
+        path: '/project/.claude/worktrees/issue-42-new',
+        branch: 'auto/issue-42-new',
+        issue_number: 42
+      )
+    end
+
+    before do
+      allow(pipeline_state).to receive(:load).with(42).and_return(saved_state_no_worktree)
+      allow(Dir).to receive(:exist?).with('/project/.claude/worktrees/issue-42').and_return(false)
+      # Branch exists
+      allow(Open3).to receive(:capture3)
+        .with('git', 'rev-parse', '--verify', 'auto/issue-42-abc', chdir: '/project')
+        .and_return(['abc123', '', instance_double(Process::Status, success?: true)])
+      # Worktree created
+      worktrees = instance_double(Ocak::WorktreeManager)
+      allow(Ocak::WorktreeManager).to receive(:new).and_return(worktrees)
+      allow(worktrees).to receive(:create).and_return(worktree_obj)
+      # Checkout fails
+      allow(Open3).to receive(:capture3)
+        .with('git', 'checkout', 'auto/issue-42-abc', chdir: worktree_obj.path)
+        .and_return(['', 'error: pathspec did not match', instance_double(Process::Status, success?: false)])
+    end
+
+    it 'exits with error' do
+      expect { command.call(issue: '42') }.to raise_error(SystemExit)
+    end
+
+    it 'warns about the failed checkout' do
+      expect { command.call(issue: '42') }.to raise_error(SystemExit).and output(
+        /Failed to checkout branch/
+      ).to_stderr
+    end
+  end
+
   it 'exits with error on ConfigNotFound' do
     allow(Ocak::Config).to receive(:load).and_raise(Ocak::Config::ConfigNotFound, 'not found')
 

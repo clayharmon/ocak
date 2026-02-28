@@ -112,7 +112,12 @@ module Ocak
     end
 
     def rebase_onto_main(worktree)
-      git('fetch', 'origin', 'main', chdir: worktree.path)
+      _, fetch_stderr, fetch_status = git('fetch', 'origin', 'main', chdir: worktree.path)
+      unless fetch_status.success?
+        @logger.error("git fetch origin main failed: #{fetch_stderr[0..200]}")
+        return false
+      end
+
       _, stderr, status = git('rebase', 'origin/main', chdir: worktree.path)
 
       return true if status.success?
