@@ -2,7 +2,7 @@
 
 *Ocak (pronounced "oh-JAHK") is Turkish for "forge" or "hearth" — the place where raw material meets fire and becomes something useful. Also: let 'em cook.*
 
-Multi-agent pipeline that processes GitHub issues autonomously with Claude Code. You write an issue, label it, and ocak runs it through implement → review → fix → security review → document → audit → merge. Each issue gets its own worktree so they can run in parallel.
+Multi-agent pipeline that processes GitHub issues autonomously with Claude Code. You write an issue, label it, and ocak runs it through implement → review → fix → security review → document → audit → merge. Each issue gets its own worktree so they can run in parrallel.
 
 ## Quick Start
 
@@ -51,12 +51,12 @@ flowchart TD
     AUD --> MRG["9. Merger<br>(sonnet)"]
 ```
 
-Steps 5-8 are tagged `complexity: full` and get skipped for simple issues. The `--fast` flag forces all issues to simple complexity.
+Steps 5-8 are tagged `complexity: full` and get skipped for simple issues. `--fast` forces everything to simple complexity so a typo fix doesnt burn through the whole pipeline.
 
 Conditional steps only run when needed:
-- **Fix** runs if the reviewer flagged 🔴 blocking issues
-- **Verify** runs if fixes were applied
-- **Merge** is skipped in `--manual-review` mode or when the auditor returns a BLOCK finding
+- **Fix** only runs if the reviewer flagged 🔴 blocking issues
+- **Verify** only runs if fixes were actually applied
+- **Merge** gets skipped in `--manual-review` mode or when the auditor BLOCKs
 
 ### Label State Machine
 
@@ -82,11 +82,11 @@ stateDiagram-v2
 
 ### Complexity Classification
 
-The planner classifies each issue as `simple` or `full`:
+The planner classifes each issue as `simple` or `full`:
 - **Simple** — skips security review, second fix pass, documenter, and auditor
-- **Full** — runs the complete pipeline
+- **Full** — runs the whole thing
 
-The `--fast` flag forces all issues to `simple`, giving you: implement → review → fix (if needed) → verify (if fixed) → merge.
+`--fast` forces all issues to `simple`, giving you: implement → review → fix (if needed) → verify (if fixed) → merge.
 
 ### Merge Flow
 
@@ -102,11 +102,11 @@ flowchart LR
     E --> F["Merger agent<br>create PR + merge"]
 ```
 
-Merging is sequential — one issue at a time — so you don't get conflicts between parallel worktrees.
+Merging is sequential — one at a time — so you dont get conflicts between parallel worktrees.
 
 ## Agents
 
-8 agents, each with scoped tool permissions:
+8 agents, each with scoped tool permisions:
 
 | Agent | Role | Tools | Model |
 |-------|------|-------|-------|
@@ -119,7 +119,7 @@ Merging is sequential — one issue at a time — so you don't get conflicts bet
 | **planner** | Batch issues, classify complexity | Read, Glob, Grep, Bash (read-only) | haiku |
 | **pipeline** | Self-contained single-agent mode | All tools | opus |
 
-Review agents (reviewer, security-reviewer, auditor) have no Write/Edit access — they can only read and report.
+Review agents (reviewer, security-reviewer, auditor) have no Write/Edit access — they can only read and report stuff back.
 
 ## Skills
 
@@ -136,7 +136,7 @@ Interactive skills for use inside Claude Code:
 
 ### Full Pipeline — `ocak run`
 
-The default. Polls for `auto-ready` issues, plans batches, runs the full step sequence in parallel worktrees, merges sequentially.
+The default. Polls for `auto-ready` issues, plans batches, runs the full step sequence in parallel worktrees, merges sequentally.
 
 ```bash
 ocak run --once --watch          # Process current batch and exit
@@ -148,7 +148,7 @@ ocak run --fast --watch          # Skip security/docs/audit steps
 
 ### Fast Mode — `ocak hiz`
 
-Lightweight alternative for quick PRs you'll review yourself:
+Lightweight alternative for quick PRs you'll review youself:
 
 ```mermaid
 flowchart LR
@@ -157,7 +157,7 @@ flowchart LR
     C --> D["Create PR<br>(no merge)"]
 ```
 
-Runs in your current checkout (no worktree), uses cheaper models, creates a PR without merging. Roughly 5-10x cheaper than the full pipeline.
+Runs in your current checkout (no worktree), uses cheaper models, creates a PR without merging. Rougly 5-10x cheaper than the full pipeline.
 
 ```bash
 ocak hiz 42 --watch
@@ -165,7 +165,7 @@ ocak hiz 42 --watch
 
 ### Re-review Flow
 
-When `--manual-review` is enabled, PRs sit open for human review. After leaving feedback, label the PR `auto-reready` and ocak will:
+When `--manual-review` is enabled, PRs sit open for human review. After leaving feedback, slap the `auto-reready` label on the PR and ocak will:
 
 1. Check out the PR branch
 2. Run the implementer against the review comments
@@ -175,9 +175,9 @@ When `--manual-review` is enabled, PRs sit open for human review. After leaving 
 
 ### Graceful Shutdown
 
-Press `Ctrl+C` once — the current agent step finishes, then the pipeline stops. Work-in-progress is committed with a `wip:` prefix, issue labels reset to `auto-ready`, and resume commands are printed.
+`Ctrl+C` once — current agent step finishes, then the pipeline stops. WIP gets committed, labels reset to `auto-ready`, and resume commands are printed.
 
-Press `Ctrl+C` twice — active subprocesses are killed immediately (SIGTERM → wait → SIGKILL), then the same cleanup runs.
+`Ctrl+C` twice — kills active subprocesses immediatley (SIGTERM → wait → SIGKILL), then same cleanup runs.
 
 ```bash
 ocak resume 42 --watch  # Pick up from where it stopped
@@ -325,7 +325,7 @@ steps:
 
 ## Stack Detection
 
-`ocak init` auto-detects your project stack and generates tailored agent templates:
+`ocak init` auto-detects your project stack and generates tailored agent templates. For anything else you get generic agents that you can cusomize.
 
 | Language | Frameworks | Test | Lint | Security |
 |----------|-----------|------|------|----------|
@@ -347,19 +347,19 @@ Pipeline runs generate JSON reports in `.ocak/reports/`:
 ocak status --report
 ```
 
-Shows per-run stats (cost, duration, steps completed, failures) and aggregates across recent runs (avg cost, avg duration, success rate, slowest step, most-skipped step).
+Shows per-run stats (cost, duration, steps completed, failures) and aggregates across recent runs (avg cost, avg duration, success rate, slowest step, most-skipped step). Handy for figuring out where all your money went.
 
 ## Writing Good Issues
 
-The `/design` skill produces issues formatted for zero-context agents. Think of it as writing a ticket for a contractor who's never seen your codebase. The key sections:
+The `/design` skill produces issues formatted for zero-context agents. Think of it as writing a ticket for a contractor who's never seen your codebase — everthing they need should be in the issue body. The key sections:
 
 - **Context** — what part of the system, with specific file paths
-- **Acceptance Criteria** — "when X, then Y" format, each independently testable
+- **Acceptance Criteria** — "when X, then Y" format, each independantly testable
 - **Implementation Guide** — exact files to create/modify
 - **Patterns to Follow** — references to actual files in the codebase
 - **Security Considerations** — auth, validation, data exposure
 - **Test Requirements** — specific test cases with file paths
-- **Out of Scope** — explicit boundaries to prevent scope creep
+- **Out of Scope** — explicit boundaries so it doesnt scope creep
 
 ## CLI Reference
 
@@ -407,15 +407,15 @@ ocak debt                            Print instructions for /debt skill
 
 **How much does it cost?**
 
-Depends on the issue. Simple stuff is $2-5, complex issues can be $10-15. The implementer runs on opus which is the expensive part. Use `ocak hiz` (sonnet-based) for ~5-10x cheaper runs. Set `cost_budget` in config to cap spend per issue. Run `ocak status --report` to see actual costs.
+Depends on the issue. Simple stuff is $2-5, complex issues can be $10-15. The implementer runs on opus which is the expensive part, reviews on sonnet are pretty cheap. Use `ocak hiz` for ~5-10x cheaper runs. Set `cost_budget` in config to cap spend per issue.
 
 **Is it safe?**
 
-Reasonably. Review agents are read-only (no Write/Edit tools), merging is sequential so you don't get conflicts, and failed pipelines get labeled and logged. External content in prompts is wrapped in XML delimiter tags to prevent prompt injection. Branch names are validated against flag injection. Use `--dry-run` first to see what it would do.
+Reasonably. Review agents are read-only (no Write/Edit tools), merging is sequential so you dont get conflicts, and failed piplines get labeled and logged. You can always `--dry-run` first to see what it would do.
 
 **What if it breaks?**
 
-Issues get labeled `pipeline-failed` with a comment explaining what went wrong. Worktrees get cleaned up automatically. Run `ocak clean` to remove any stragglers, and check `logs/pipeline/` for detailed logs.
+Issues get labeled `pipeline-failed` with a comment explaining what went wrong. Worktrees get cleaned up automaticaly. Run `ocak clean` to remove any stragglers, and check `logs/pipeline/` for detailed logs.
 
 **How do I pause it?**
 
