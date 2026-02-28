@@ -20,13 +20,12 @@ module Ocak
     end
 
     def fetch_ready
-      stdout, _, status = Open3.capture3(
-        'gh', 'issue', 'list',
+      stdout, _, status = run_gh(
+        'issue', 'list',
         '--label', @config.label_ready,
         '--state', 'open',
         '--json', 'number,title,body,labels,author',
-        '--limit', '50',
-        chdir: @config.project_dir
+        '--limit', '50'
       )
       return [] unless status.success?
 
@@ -57,13 +56,12 @@ module Ocak
     end
 
     def fetch_reready_prs
-      stdout, _, status = Open3.capture3(
-        'gh', 'pr', 'list',
+      stdout, _, status = run_gh(
+        'pr', 'list',
         '--label', @config.label_reready,
         '--state', 'open',
         '--json', 'number,title,body,headRefName,labels',
-        '--limit', '20',
-        chdir: @config.project_dir
+        '--limit', '20'
       )
       return [] unless status.success?
 
@@ -74,10 +72,9 @@ module Ocak
     end
 
     def fetch_pr_comments(pr_number)
-      stdout, _, status = Open3.capture3(
-        'gh', 'pr', 'view', pr_number.to_s,
-        '--json', 'comments,reviews',
-        chdir: @config.project_dir
+      stdout, _, status = run_gh(
+        'pr', 'view', pr_number.to_s,
+        '--json', 'comments,reviews'
       )
       return { comments: [], reviews: [] } unless status.success?
 
@@ -96,16 +93,12 @@ module Ocak
 
     def pr_transition(pr_number, remove_label: nil, add_label: nil)
       if remove_label
-        _, _, status = Open3.capture3('gh', 'pr', 'edit', pr_number.to_s,
-                                      '--remove-label', remove_label,
-                                      chdir: @config.project_dir)
+        _, _, status = run_gh('pr', 'edit', pr_number.to_s, '--remove-label', remove_label)
         return false unless status.success?
       end
 
       if add_label
-        _, _, status = Open3.capture3('gh', 'pr', 'edit', pr_number.to_s,
-                                      '--add-label', add_label,
-                                      chdir: @config.project_dir)
+        _, _, status = run_gh('pr', 'edit', pr_number.to_s, '--add-label', add_label)
         return false unless status.success?
       end
 
@@ -113,9 +106,7 @@ module Ocak
     end
 
     def pr_comment(pr_number, body)
-      _, _, status = Open3.capture3('gh', 'pr', 'comment', pr_number.to_s,
-                                    '--body', body,
-                                    chdir: @config.project_dir)
+      _, _, status = run_gh('pr', 'comment', pr_number.to_s, '--body', body)
       status.success?
     end
 
@@ -125,17 +116,15 @@ module Ocak
 
     def ensure_label(label)
       color = LABEL_COLORS.fetch(label, 'ededed')
-      Open3.capture3('gh', 'label', 'create', label, '--force', '--color', color,
-                     chdir: @config.project_dir) # --force: update if exists
-    rescue StandardError => e
+      run_gh('label', 'create', label, '--force', '--color', color) # --force: update if exists
+    rescue Errno::ENOENT => e
       @logger&.warn("Failed to create label '#{label}': #{e.message}")
     end
 
     def view(issue_number, fields: 'number,title,body,labels')
-      stdout, _, status = Open3.capture3(
-        'gh', 'issue', 'view', issue_number.to_s,
-        '--json', fields,
-        chdir: @config.project_dir
+      stdout, _, status = run_gh(
+        'issue', 'view', issue_number.to_s,
+        '--json', fields
       )
       return nil unless status.success?
 
@@ -185,10 +174,9 @@ module Ocak
     end
 
     def fetch_comments(issue_number)
-      stdout, _, status = Open3.capture3(
-        'gh', 'issue', 'view', issue_number.to_s,
-        '--json', 'comments',
-        chdir: @config.project_dir
+      stdout, _, status = run_gh(
+        'issue', 'view', issue_number.to_s,
+        '--json', 'comments'
       )
       return [] unless status.success?
 
