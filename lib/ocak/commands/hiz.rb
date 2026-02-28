@@ -178,8 +178,9 @@ module Ocak
           post_step_comment(issue_number,
                             "\u{26A0}\u{FE0F} **Final verification failed** \u2014 attempting auto-fix...",
                             state: state)
-          claude.run_agent('implementer',
-                           "Fix these test/lint failures:\n\n#{result[:output]}",
+          fix_prompt = "Fix these test/lint failures:\n\n" \
+                       "<verification_output>\n#{result[:output]}\n</verification_output>"
+          claude.run_agent('implementer', fix_prompt,
                            chdir: chdir, model: STEP_MODELS['implementer'])
           result = run_final_checks(logger, chdir: chdir)
         end
