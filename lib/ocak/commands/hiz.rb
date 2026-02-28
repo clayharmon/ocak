@@ -159,40 +159,22 @@ module Ocak
         role = step[:role]
         model = STEP_MODELS[agent]
         logger.info("--- Phase: #{role} (#{agent}) [#{model}] ---")
-        post_step_comment(issue_number, "\u{1F504} **Phase: #{role}** (#{agent})", state: state)
+        post_step_comment(issue_number, "\u{1F504} **Phase: #{role}** (#{agent})", issues: state.issues)
         prompt = build_step_prompt(role, issue_number, nil)
         result = claude.run_agent(agent, prompt, chdir: chdir, model: model)
-        post_step_completion_comment(issue_number, role, result, state: state)
+        post_step_completion_comment(issue_number, role, result, issues: state.issues)
         result
       end
 
       def run_final_verification_step(issue_number, claude:, logger:, chdir:, state:)
         return nil unless @config.test_command || @config.lint_check_command
 
-        logger.info('--- Final verification ---')
-        post_step_comment(issue_number, "\u{1F504} **Phase: final-verify** (verification)", state: state)
-        result = run_final_checks(logger, chdir: chdir)
-
-        unless result[:success]
-          logger.warn('Final checks failed, attempting fix...')
-          post_step_comment(issue_number,
-                            "\u{26A0}\u{FE0F} **Final verification failed** \u2014 attempting auto-fix...",
-                            state: state)
-          fix_prompt = "Fix these test/lint failures:\n\n" \
-                       "<verification_output>\n#{result[:output]}\n</verification_output>"
-          claude.run_agent('implementer', fix_prompt,
-                           chdir: chdir, model: STEP_MODELS['implementer'])
-          result = run_final_checks(logger, chdir: chdir)
+        result = run_verification_with_retry(logger: logger, claude: claude, chdir: chdir,
+                                             model: STEP_MODELS['implementer']) do |body|
+          post_step_comment(issue_number, body, issues: state.issues)
         end
-
         state.steps_run += 1
-        if result[:success]
-          post_step_comment(issue_number, "\u{2705} **Phase: final-verify** completed", state: state)
-          nil
-        else
-          post_step_comment(issue_number, "\u{274C} **Phase: final-verify** failed", state: state)
-          { success: false, phase: 'final-verify', output: result[:output] }
-        end
+        result
       end
 
       def push_and_create_pr(issue_number, branch, logger:, chdir:, state:)
@@ -259,28 +241,11 @@ module Ocak
         PipelineLogger.new(log_dir: File.join(@config.project_dir, @config.log_dir), issue_number: issue_number)
       end
 
-      def post_step_comment(issue_number, body, state:)
-        state.issues&.comment(issue_number, body)
-      rescue StandardError
-        nil
-      end
-
-      def post_step_completion_comment(issue_number, role, result, state:)
-        duration = (result.duration_ms.to_f / 1000).round
-        cost = format('%.3f', result.cost_usd.to_f)
-        if result.success?
-          post_step_comment(issue_number, "\u{2705} **Phase: #{role}** completed \u2014 #{duration}s | $#{cost}",
-                            state: state)
-        else
-          post_step_comment(issue_number, "\u{274C} **Phase: #{role}** failed \u2014 #{duration}s | $#{cost}",
-                            state: state)
-        end
-      end
-
       def post_hiz_start_comment(issue_number, state:)
         steps = "implement \u2192 review \u2225 security"
         steps += " \u2192 verify" if @config.test_command || @config.lint_check_command
-        post_step_comment(issue_number, "\u{1F680} **Hiz (fast mode) started** \u2014 #{steps}", state: state)
+        post_step_comment(issue_number, "\u{1F680} **Hiz (fast mode) started** \u2014 #{steps}",
+                          issues: state.issues)
       end
 
       def post_hiz_summary_comment(issue_number, duration, success:, state:, failed_phase: nil)
@@ -291,12 +256,12 @@ module Ocak
           post_step_comment(issue_number,
                             "\u{2705} **Pipeline complete** \u2014 #{state.steps_run}/#{total} steps run " \
                             "| 0 skipped | $#{cost} total | #{duration}s",
-                            state: state)
+                            issues: state.issues)
         else
           post_step_comment(issue_number,
                             "\u{274C} **Pipeline failed** at phase: #{failed_phase} \u2014 " \
                             "#{state.steps_run}/#{total} steps completed | $#{cost} total",
-                            state: state)
+                            issues: state.issues)
         end
       end
     end

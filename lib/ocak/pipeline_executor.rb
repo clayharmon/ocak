@@ -221,29 +221,8 @@ module Ocak
     end
 
     def run_final_verification(issue_number, logger:, claude:, chdir:)
-      return nil unless @config.test_command || @config.lint_check_command
-
-      logger.info('--- Final verification ---')
-      post_step_comment(issue_number, "\u{1F504} **Phase: final-verify** (verification)")
-      start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      result = run_final_checks(logger, chdir: chdir)
-
-      unless result[:success]
-        logger.warn('Final checks failed, attempting fix...')
-        post_step_comment(issue_number, "\u{26A0}\u{FE0F} **Final verification failed** \u2014 attempting auto-fix...")
-        fix_prompt = "Fix these test/lint failures:\n\n" \
-                     "<verification_output>\n#{result[:output]}\n</verification_output>"
-        claude.run_agent('implementer', fix_prompt, chdir: chdir)
-        result = run_final_checks(logger, chdir: chdir)
-      end
-
-      duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
-      if result[:success]
-        post_step_comment(issue_number, "\u{2705} **Phase: final-verify** completed \u{2014} #{duration}s")
-        nil
-      else
-        post_step_comment(issue_number, "\u{274C} **Phase: final-verify** failed \u{2014} #{duration}s")
-        { success: false, phase: 'final-verify', output: result[:output] }
+      run_verification_with_retry(logger: logger, claude: claude, chdir: chdir) do |body|
+        post_step_comment(issue_number, body)
       end
     end
 
