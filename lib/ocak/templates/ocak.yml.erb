@@ -66,6 +66,7 @@ steps:
     condition: had_fixes
   - agent: security_reviewer
     role: security
+    complexity: full          # skipped for simple issues and --fast mode
   - agent: implementer
     role: fix
     condition: has_findings

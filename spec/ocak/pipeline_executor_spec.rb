@@ -195,6 +195,34 @@ RSpec.describe Ocak::PipelineExecutor do
 
       expect(claude).to have_received(:run_agent).with('documenter', anything, chdir: anything)
     end
+
+    it 'skips security step with complexity full for simple issues' do
+      steps_with_security = [
+        { 'agent' => 'implementer', 'role' => 'implement' },
+        { 'agent' => 'reviewer', 'role' => 'review' },
+        { 'agent' => 'security-reviewer', 'role' => 'security', 'complexity' => 'full' },
+        { 'agent' => 'merger', 'role' => 'merge' }
+      ]
+      allow(config).to receive(:steps).and_return(steps_with_security)
+
+      executor.run_pipeline(10, logger: logger, claude: claude, complexity: 'simple')
+
+      expect(claude).not_to have_received(:run_agent).with('security-reviewer', anything, chdir: anything)
+    end
+
+    it 'runs security step with complexity full for full issues' do
+      steps_with_security = [
+        { 'agent' => 'implementer', 'role' => 'implement' },
+        { 'agent' => 'reviewer', 'role' => 'review' },
+        { 'agent' => 'security-reviewer', 'role' => 'security', 'complexity' => 'full' },
+        { 'agent' => 'merger', 'role' => 'merge' }
+      ]
+      allow(config).to receive(:steps).and_return(steps_with_security)
+
+      executor.run_pipeline(10, logger: logger, claude: claude, complexity: 'full')
+
+      expect(claude).to have_received(:run_agent).with('security-reviewer', anything, chdir: anything)
+    end
   end
 
   describe 'manual review mode' do

@@ -24,6 +24,8 @@ module Ocak
                              desc: 'Create PRs without auto-merge; wait for human review'
       option :audit, type: :boolean, default: false,
                      desc: 'Run auditor as post-pipeline gate; create PR with findings if issues found'
+      option :fast, type: :boolean, default: false,
+                    desc: 'Lean pipeline — skip security, document, audit steps'
       option :verbose, type: :boolean, default: false, desc: 'Increase log detail'
       option :quiet, type: :boolean, default: false, desc: 'Suppress non-error output'
 
@@ -45,6 +47,7 @@ module Ocak
             single: issue&.to_i,
             dry_run: options[:dry_run],
             once: options[:once],
+            fast: options[:fast],
             log_level: log_level
           }
         )
