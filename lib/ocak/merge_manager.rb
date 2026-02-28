@@ -160,7 +160,11 @@ module Ocak
         # Check if all conflicts resolved
         remaining, = git('diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
         if remaining.strip.empty?
-          git('commit', '--no-edit', chdir: worktree.path)
+          _, commit_stderr, commit_status = git('commit', '--no-edit', chdir: worktree.path)
+          unless commit_status.success?
+            @logger.error("Commit after conflict resolution failed: #{commit_stderr}")
+            return false
+          end
           @logger.info('Merge conflicts resolved by agent')
           return true
         end

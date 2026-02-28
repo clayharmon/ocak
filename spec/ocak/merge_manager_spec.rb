@@ -190,6 +190,84 @@ RSpec.describe Ocak::MergeManager do
       end
     end
 
+    context 'when agent resolves conflicts but commit fails' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: worktree.path)
+          .and_return(['', 'conflict', failure_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', '--abort', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'merge', 'origin/main', '--no-edit', chdir: worktree.path)
+          .and_return(['', 'conflict', failure_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
+          .and_return(["file.rb\n", '', success_status], ['', '', success_status])
+        allow(claude).to receive(:run_agent)
+          .and_return(Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Resolved'))
+        allow(Open3).to receive(:capture3)
+          .with('git', 'commit', '--no-edit', chdir: worktree.path)
+          .and_return(['', 'nothing to commit', failure_status])
+      end
+
+      it 'returns false' do
+        expect(manager.merge(42, worktree)).to be false
+      end
+
+      it 'logs an error with stderr' do
+        manager.merge(42, worktree)
+
+        expect(logger).to have_received(:error).with(/Commit after conflict resolution failed: nothing to commit/)
+      end
+    end
+
+    context 'when agent resolves conflicts and commit succeeds' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: worktree.path)
+          .and_return(['', 'conflict', failure_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', '--abort', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'merge', 'origin/main', '--no-edit', chdir: worktree.path)
+          .and_return(['', 'conflict', failure_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
+          .and_return(["file.rb\n", '', success_status], ['', '', success_status])
+        allow(claude).to receive(:run_agent)
+          .and_return(Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Resolved'))
+        allow(Open3).to receive(:capture3)
+          .with('git', 'commit', '--no-edit', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(claude).to receive(:run_agent)
+          .with('merger', anything, chdir: worktree.path)
+          .and_return(Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Merged'))
+      end
+
+      it 'returns true' do
+        expect(manager.merge(42, worktree)).to be true
+      end
+
+      it 'logs success' do
+        manager.merge(42, worktree)
+
+        expect(logger).to have_received(:info).with('Merge conflicts resolved by agent')
+      end
+    end
     context 'when tests fail after rebase' do
       before do
         allow(Open3).to receive(:capture3)
