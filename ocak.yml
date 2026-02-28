@@ -17,9 +17,11 @@ pipeline:
 # GitHub label state machine
 labels:
   ready: "auto-ready"
-  in_progress: "in-progress"
+  in_progress: "auto-doing"
   completed: "completed"
   failed: "pipeline-failed"
+  reready: "auto-reready"
+  awaiting_review: "auto-pending-human"
 
 # Pipeline steps — customize by adding/removing/reordering
 steps:
