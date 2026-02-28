@@ -88,6 +88,54 @@ RSpec.describe Ocak::PipelineRunner do
 
       expect(claude).not_to have_received(:run_agent) if claude.respond_to?(:run_agent)
     end
+
+    it 'transitions to ready (not failed) on interrupted result' do
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(issues).to receive(:transition)
+      allow(Ocak::GitUtils).to receive(:commit_changes)
+
+      # Make the pipeline return an interrupted result
+      allow(claude).to receive(:run_agent) do
+        runner.instance_variable_set(:@shutting_down, true)
+        success_result
+      end
+
+      runner.run
+
+      expect(issues).to have_received(:transition).with(42, from: 'in-progress', to: 'auto-ready')
+      expect(issues).not_to have_received(:transition).with(42, from: 'in-progress', to: 'pipeline-failed')
+    end
+
+    it 'posts interrupt comment (not failure comment) on interrupted result' do
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(issues).to receive(:transition)
+      allow(Ocak::GitUtils).to receive(:commit_changes)
+
+      allow(claude).to receive(:run_agent) do
+        runner.instance_variable_set(:@shutting_down, true)
+        success_result
+      end
+
+      runner.run
+
+      expect(issues).to have_received(:comment).with(42, /Pipeline interrupted.*ocak resume --issue 42/)
+      expect(issues).not_to have_received(:comment).with(42, /Pipeline failed/)
+    end
+
+    it 'adds interrupted issue to @interrupted_issues for shutdown summary' do
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(issues).to receive(:transition)
+      allow(Ocak::GitUtils).to receive(:commit_changes)
+
+      allow(claude).to receive(:run_agent) do
+        runner.instance_variable_set(:@shutting_down, true)
+        success_result
+      end
+
+      runner.run
+
+      expect(runner.instance_variable_get(:@interrupted_issues)).to include(42)
+    end
   end
 
   describe 'label auto-creation' do
@@ -783,6 +831,176 @@ RSpec.describe Ocak::PipelineRunner do
 
       # Should not call planner for single issue
       expect(claude).not_to have_received(:run_agent).with('planner', anything)
+    end
+  end
+
+  describe 'two-tiered shutdown' do
+    subject(:runner) { described_class.new(config: config, options: { once: true }) }
+
+    describe '#shutdown!' do
+      it 'sets shutting_down flag on first call' do
+        allow(runner).to receive(:warn)
+
+        runner.shutdown!
+
+        expect(runner.shutting_down?).to be true
+      end
+
+      it 'prints graceful shutdown message on first call' do
+        expect { runner.shutdown! }.to output(/Graceful shutdown initiated/).to_stderr
+      end
+
+      it 'calls force_shutdown! on second call' do
+        registry = runner.registry
+        allow(registry).to receive(:kill_all)
+        allow(runner).to receive(:warn)
+
+        runner.shutdown!
+        runner.shutdown!
+
+        expect(registry).to have_received(:kill_all)
+      end
+
+      it 'prints force shutdown message on second call' do
+        allow(runner.registry).to receive(:kill_all)
+
+        expect do
+          runner.shutdown!
+          runner.shutdown!
+        end.to output(/Force shutdown.*killing active processes/m).to_stderr
+      end
+    end
+
+    describe '#print_shutdown_summary' do
+      it 'outputs nothing when no issues were interrupted' do
+        expect { runner.print_shutdown_summary }.not_to output.to_stderr
+      end
+
+      it 'outputs resume commands for interrupted issues' do
+        # Simulate interrupted issues by accessing the internal state
+        runner.instance_variable_get(:@interrupted_issues) << 42
+        runner.instance_variable_get(:@interrupted_issues) << 99
+
+        expect { runner.print_shutdown_summary }.to output(
+          /Issue #42.*ocak resume --issue 42.*Issue #99.*ocak resume --issue 99/m
+        ).to_stderr
+      end
+    end
+
+    describe 'process_one_issue with shutdown' do
+      let(:worktree) do
+        Ocak::WorktreeManager::Worktree.new(
+          path: '/project/.claude/worktrees/issue-1',
+          branch: 'auto/issue-1-abc',
+          issue_number: 1
+        )
+      end
+      let(:worktree_manager) do
+        instance_double(Ocak::WorktreeManager, clean_stale: [], create: worktree, remove: nil)
+      end
+
+      before do
+        allow(Ocak::WorktreeManager).to receive(:new).and_return(worktree_manager)
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:fetch_ready).and_return([{ 'number' => 1, 'title' => 'A' }])
+        allow(issues).to receive(:transition)
+        allow(issues).to receive(:comment)
+        allow(Ocak::GitUtils).to receive(:commit_changes).and_return(true)
+      end
+
+      it 'commits worktree changes when pipeline is interrupted' do
+        # Make the pipeline return an interrupted result
+        allow(claude).to receive(:run_agent) do
+          runner.instance_variable_set(:@shutting_down, true)
+          success_result
+        end
+
+        runner.run
+
+        expect(Ocak::GitUtils).to have_received(:commit_changes).with(
+          chdir: '/project/.claude/worktrees/issue-1',
+          message: /wip: pipeline interrupted/,
+          logger: anything
+        )
+      end
+
+      it 'transitions issue back to ready on interruption' do
+        allow(claude).to receive(:run_agent) do
+          runner.instance_variable_set(:@shutting_down, true)
+          success_result
+        end
+
+        runner.run
+
+        expect(issues).to have_received(:transition).with(1, from: 'in-progress', to: 'auto-ready')
+      end
+
+      it 'posts interrupt comment on interrupted issue' do
+        allow(claude).to receive(:run_agent) do
+          runner.instance_variable_set(:@shutting_down, true)
+          success_result
+        end
+
+        runner.run
+
+        expect(issues).to have_received(:comment).with(
+          1, /Pipeline interrupted.*ocak resume --issue 1/
+        )
+      end
+
+      it 'does not crash when commit fails during shutdown' do
+        allow(Ocak::GitUtils).to receive(:commit_changes).and_raise(StandardError, 'git error')
+        allow(claude).to receive(:run_agent) do
+          runner.instance_variable_set(:@shutting_down, true)
+          success_result
+        end
+
+        expect { runner.run }.not_to raise_error
+      end
+
+      it 'does not crash when comment fails during shutdown' do
+        allow(issues).to receive(:comment).and_raise(StandardError, 'network error')
+        allow(claude).to receive(:run_agent) do
+          runner.instance_variable_set(:@shutting_down, true)
+          success_result
+        end
+
+        expect { runner.run }.not_to raise_error
+      end
+
+      it 'does not remove worktree for interrupted issues' do
+        allow(claude).to receive(:run_agent) do
+          runner.instance_variable_set(:@shutting_down, true)
+          success_result
+        end
+
+        runner.run
+
+        expect(worktree_manager).not_to have_received(:remove)
+      end
+
+      it 'skips merge phase when shutting down' do
+        merger = instance_double(Ocak::MergeManager)
+        allow(Ocak::MergeManager).to receive(:new).and_return(merger)
+        allow(merger).to receive(:merge)
+
+        allow(claude).to receive(:run_agent) do
+          runner.instance_variable_set(:@shutting_down, true)
+          success_result
+        end
+
+        runner.run
+
+        expect(merger).not_to have_received(:merge)
+      end
+    end
+  end
+
+  describe 'registry' do
+    it 'creates a ProcessRegistry' do
+      runner = described_class.new(config: config, options: {})
+
+      expect(runner.registry).to be_a(Ocak::ProcessRegistry)
     end
   end
 end

@@ -104,6 +104,51 @@ RSpec.describe Ocak::ProcessRunner do
       stdout_w.close unless stdout_w.closed?
       stderr_r.close unless stderr_r.closed?
     end
+
+    it 'registers PID with registry after spawn and unregisters after exit' do
+      stdin = instance_double(IO, close: nil)
+      stdout_r, stdout_w = IO.pipe
+      stderr_r, stderr_w = IO.pipe
+      stdout_w.write("ok\n")
+      stdout_w.close
+      stderr_w.close
+      wait_thr = double('wait_thr', pid: 5678)
+      status = instance_double(Process::Status, success?: true)
+      allow(wait_thr).to receive(:value).and_return(status)
+
+      allow(Open3).to receive(:popen3).and_yield(stdin, stdout_r, stderr_r, wait_thr)
+
+      registry = instance_double(Ocak::ProcessRegistry)
+      allow(registry).to receive(:register)
+      allow(registry).to receive(:unregister)
+
+      described_class.run(%w[echo ok], chdir: chdir, registry: registry)
+
+      expect(registry).to have_received(:register).with(5678)
+      expect(registry).to have_received(:unregister).with(5678)
+    ensure
+      stdout_r.close unless stdout_r.closed?
+      stderr_r.close unless stderr_r.closed?
+    end
+
+    it 'works when no registry is provided (nil safety)' do
+      stdin = instance_double(IO, close: nil)
+      stdout_r, stdout_w = IO.pipe
+      stderr_r, stderr_w = IO.pipe
+      stdout_w.write("ok\n")
+      stdout_w.close
+      stderr_w.close
+      wait_thr = double('wait_thr', pid: 5678)
+      status = instance_double(Process::Status, success?: true)
+      allow(wait_thr).to receive(:value).and_return(status)
+
+      allow(Open3).to receive(:popen3).and_yield(stdin, stdout_r, stderr_r, wait_thr)
+
+      expect { described_class.run(%w[echo ok], chdir: chdir, registry: nil) }.not_to raise_error
+    ensure
+      stdout_r.close unless stdout_r.closed?
+      stderr_r.close unless stderr_r.closed?
+    end
   end
 
   describe 'FailedStatus' do

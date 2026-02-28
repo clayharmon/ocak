@@ -282,7 +282,11 @@ Runs the full pipeline for issue #42 in your current checkout (no worktree).
 
 **How do I pause it?**
 
-Kill the `ocak run` process. Issues that are `auto-doing` will keep their label — remove it manually or let the next run pick them back up.
+Press `Ctrl+C`. The first signal lets the current agent step finish, then stops the pipeline, commits any in-progress work with a `wip:` prefix, resets issue labels to `auto-ready`, and prints resume commands. A second `Ctrl+C` immediately kills active subprocesses and performs the same cleanup. Exit code is 130.
+
+```bash
+ocak resume 42 --watch  # pick up from where it stopped
+```
 
 **What languages does it support?**
 

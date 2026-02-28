@@ -11,13 +11,14 @@ module Ocak
 
     module_function
 
-    def run(cmd, chdir:, timeout: nil, on_line: nil)
+    def run(cmd, chdir:, timeout: nil, on_line: nil, registry: nil)
       stdout = +''
       stderr = +''
       line_buf = +''
 
       Open3.popen3(*cmd, chdir: chdir) do |stdin, out, err, wait_thr|
         stdin.close
+        registry&.register(wait_thr.pid)
         ctx = {
           stdout: +'', stderr: +'', line_buf: +'',
           deadline: timeout ? Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout : nil,
@@ -27,6 +28,8 @@ module Ocak
         stdout, stderr, line_buf = read_streams(out, err, ctx)
         on_line&.call(line_buf.chomp) unless line_buf.empty?
         [stdout, stderr, wait_thr.value]
+      ensure
+        registry&.unregister(wait_thr.pid)
       end
     rescue Errno::ENOENT => e
       ['', e.message, FailedStatus.instance]

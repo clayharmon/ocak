@@ -673,4 +673,50 @@ RSpec.describe Ocak::PipelineExecutor do
       expect(batches.size).to eq(2)
     end
   end
+
+  describe 'shutdown_check' do
+    it 'stops pipeline when shutdown_check returns true between steps' do
+      shutdown = false
+      executor_with_shutdown = described_class.new(config: config, shutdown_check: -> { shutdown })
+
+      call_count = 0
+      allow(claude).to receive(:run_agent) do |_agent, _prompt, **_opts|
+        call_count += 1
+        shutdown = true if call_count == 1
+        success_result
+      end
+
+      result = executor_with_shutdown.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(result[:success]).to be false
+      expect(result[:interrupted]).to be true
+      expect(call_count).to eq(1)
+    end
+
+    it 'preserves pipeline state when interrupted' do
+      executor_with_shutdown = described_class.new(config: config, shutdown_check: -> { true })
+
+      result = executor_with_shutdown.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(result[:interrupted]).to be true
+      expect(pipeline_state).not_to have_received(:delete)
+    end
+
+    it 'runs all steps when shutdown_check returns false' do
+      executor_with_shutdown = described_class.new(config: config, shutdown_check: -> { false })
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      result = executor_with_shutdown.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(result[:success]).to be true
+    end
+
+    it 'works without shutdown_check (nil)' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(result[:success]).to be true
+    end
+  end
 end
