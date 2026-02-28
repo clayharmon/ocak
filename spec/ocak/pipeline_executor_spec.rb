@@ -377,6 +377,170 @@ RSpec.describe Ocak::PipelineExecutor do
     end
   end
 
+  describe 'pipeline start comment' do
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
+
+    before do
+      allow(issues_fetcher).to receive(:comment)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+    end
+
+    it 'posts start comment with complexity and step count' do
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude, complexity: 'simple')
+
+      expect(issues_fetcher).to have_received(:comment)
+        .with(42, /\u{1F680} \*\*Pipeline started\*\*.*complexity: `simple`.*steps: 3/)
+    end
+
+    it 'counts conditional steps that may be skipped' do
+      steps = [
+        { 'agent' => 'implementer', 'role' => 'implement' },
+        { 'agent' => 'reviewer', 'role' => 'review' },
+        { 'agent' => 'implementer', 'role' => 'fix', 'condition' => 'has_findings' },
+        { 'agent' => 'verifier', 'role' => 'verify', 'condition' => 'had_fixes' }
+      ]
+      allow(config).to receive(:steps).and_return(steps)
+
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(issues_fetcher).to have_received(:comment)
+        .with(42, /steps: 4 \(2 may be skipped\)/)
+    end
+  end
+
+  describe 'skip reason comments' do
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
+
+    before do
+      allow(issues_fetcher).to receive(:comment)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+    end
+
+    it 'posts skip comment for has_findings condition' do
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(issues_fetcher).to have_received(:comment)
+        .with(42, /\u{23ED}.*\*\*Skipping fix\*\*.*no blocking findings from review/)
+    end
+
+    it 'posts skip comment for had_fixes condition' do
+      steps = [
+        { 'agent' => 'implementer', 'role' => 'implement' },
+        { 'agent' => 'verifier', 'role' => 'verify', 'condition' => 'had_fixes' }
+      ]
+      allow(config).to receive(:steps).and_return(steps)
+
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(issues_fetcher).to have_received(:comment)
+        .with(42, /\u{23ED}.*\*\*Skipping verify\*\*.*no fixes were made/)
+    end
+
+    it 'posts skip comment for manual review mode' do
+      steps = [
+        { 'agent' => 'implementer', 'role' => 'implement' },
+        { 'agent' => 'merger', 'role' => 'merge' }
+      ]
+      allow(config).to receive(:steps).and_return(steps)
+      allow(config).to receive(:manual_review).and_return(true)
+
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(issues_fetcher).to have_received(:comment)
+        .with(42, /\u{23ED}.*\*\*Skipping merge\*\*.*manual review mode/)
+    end
+
+    it 'posts skip comment for fast-track issue' do
+      steps = [
+        { 'agent' => 'implementer', 'role' => 'implement' },
+        { 'agent' => 'auditor', 'role' => 'audit', 'complexity' => 'full' }
+      ]
+      allow(config).to receive(:steps).and_return(steps)
+
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude, complexity: 'simple')
+
+      expect(issues_fetcher).to have_received(:comment)
+        .with(42, /\u{23ED}.*\*\*Skipping audit\*\*.*fast-track issue \(simple complexity\)/)
+    end
+  end
+
+  describe 'retry comment' do
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
+
+    before do
+      allow(issues_fetcher).to receive(:comment)
+      allow(config).to receive(:test_command).and_return('bundle exec rspec')
+      allow(config).to receive(:lint_check_command).and_return(nil)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+    end
+
+    it 'posts retry warning when final verification fails' do
+      allow(Open3).to receive(:capture3)
+        .with('bundle', 'exec', 'rspec', chdir: '/project')
+        .and_return(['FAIL', '', instance_double(Process::Status, success?: false)])
+
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(issues_fetcher).to have_received(:comment)
+        .with(42, /\u{26A0}.*\*\*Final verification failed\*\*.*attempting auto-fix/)
+    end
+
+    it 'does not post retry warning when final verification passes' do
+      allow(Open3).to receive(:capture3)
+        .with('bundle', 'exec', 'rspec', chdir: '/project')
+        .and_return(['', '', instance_double(Process::Status, success?: true)])
+
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(issues_fetcher).not_to have_received(:comment)
+        .with(42, /Final verification failed/)
+    end
+  end
+
+  describe 'pipeline summary comment' do
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
+    let(:result_with_cost) do
+      Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Done', cost_usd: 0.10, duration_ms: 30_000)
+    end
+
+    before do
+      allow(issues_fetcher).to receive(:comment)
+    end
+
+    it 'posts success summary with steps run, skipped, cost, and duration' do
+      allow(claude).to receive(:run_agent).and_return(result_with_cost)
+
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(issues_fetcher).to have_received(:comment)
+        .with(42, %r{\u{2705} \*\*Pipeline complete\*\*.*2/3 steps run.*1 skipped.*\$0\.20 total})
+    end
+
+    it 'posts failure summary with phase and steps completed' do
+      allow(claude).to receive(:run_agent).with('implementer', anything, chdir: anything)
+                                          .and_return(Ocak::ClaudeRunner::AgentResult.new(
+                                                        success: false, output: 'Error', cost_usd: 0.05
+                                                      ))
+
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(issues_fetcher).to have_received(:comment)
+        .with(42, %r{\u{274C} \*\*Pipeline failed\*\* at phase: implement.*1/3 steps completed.*\$0\.05 total})
+    end
+
+    it 'does not crash with nil issues' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(result[:success]).to be true
+    end
+  end
+
   describe '#plan_batches' do
     it 'returns sequential batches for single issue' do
       issues = [{ 'number' => 1, 'title' => 'A' }]

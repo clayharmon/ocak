@@ -24,18 +24,32 @@ module Ocak
       logger.info("=== Starting pipeline for issue ##{issue_number} (#{complexity}) ===")
 
       state = { last_review_output: nil, had_fixes: false, completed_steps: [], total_cost: 0.0,
-                complexity: complexity }
+                complexity: complexity, steps_run: 0, steps_skipped: 0 }
+      start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      post_pipeline_start_comment(issue_number, state)
 
       failure = run_pipeline_steps(issue_number, state, logger: logger, claude: claude, chdir: chdir,
                                                         skip_steps: skip_steps)
       log_cost_summary(state[:total_cost], logger)
-      return failure if failure
+      if failure
+        duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
+        post_pipeline_summary_comment(issue_number, state, duration, success: false,
+                                                                     failed_phase: failure[:phase])
+        return failure
+      end
 
       failure = run_final_verification(issue_number, logger: logger, claude: claude, chdir: chdir)
-      return failure if failure
+      if failure
+        duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
+        post_pipeline_summary_comment(issue_number, state, duration, success: false,
+                                                                     failed_phase: failure[:phase])
+        return failure
+      end
 
       pipeline_state.delete(issue_number)
 
+      duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
+      post_pipeline_summary_comment(issue_number, state, duration, success: true)
       logger.info("=== Pipeline complete for issue ##{issue_number} ===")
       { success: true, output: 'Pipeline completed successfully' }
     end
@@ -52,7 +66,13 @@ module Ocak
           next
         end
 
-        next if skip_step?(step, state, logger)
+        reason = skip_reason(step, state)
+        if reason
+          logger.info("Skipping #{role} \u2014 #{reason}")
+          post_step_comment(issue_number, "\u{23ED}\u{FE0F} **Skipping #{role}** \u2014 #{reason}")
+          state[:steps_skipped] += 1
+          next
+        end
 
         result = execute_step(step, issue_number, state[:last_review_output], logger: logger, claude: claude,
                                                                               chdir: chdir)
@@ -75,6 +95,7 @@ module Ocak
     def record_step_result(ctx)
       update_pipeline_state(ctx.role, ctx.result, ctx.state)
       ctx.state[:completed_steps] << ctx.idx
+      ctx.state[:steps_run] += 1
       ctx.state[:total_cost] += ctx.result.cost_usd.to_f
       save_step_progress(ctx)
       post_step_completion_comment(ctx)
@@ -105,27 +126,17 @@ module Ocak
       { success: false, phase: 'budget', output: "Cost budget exceeded: $#{cost}" }
     end
 
-    def skip_step?(step, state, logger)
-      role = step[:role].to_s
+    def skip_reason(step, state)
       condition = step[:condition]
 
-      if role == 'merge' && @config.manual_review
-        logger.info("Skipping #{role} — manual review mode")
-        return true
-      end
-      if step[:complexity] == 'full' && state[:complexity] == 'simple'
-        logger.info("Skipping #{role} — fast-track issue")
-        return true
-      end
+      return 'manual review mode' if step[:role].to_s == 'merge' && @config.manual_review
+      return 'fast-track issue (simple complexity)' if step[:complexity] == 'full' && state[:complexity] == 'simple'
       if condition == 'has_findings' && !state[:last_review_output]&.include?("\u{1F534}")
-        logger.info("Skipping #{role} — no blocking findings")
-        return true
+        return 'no blocking findings from review'
       end
-      if condition == 'had_fixes' && !state[:had_fixes]
-        logger.info("Skipping #{role} — no fixes were made")
-        return true
-      end
-      false
+      return 'no fixes were made' if condition == 'had_fixes' && !state[:had_fixes]
+
+      nil
     end
 
     def update_pipeline_state(role, result, state)
@@ -150,6 +161,7 @@ module Ocak
 
       unless result[:success]
         logger.warn('Final checks failed, attempting fix...')
+        post_step_comment(issue_number, "\u{26A0}\u{FE0F} **Final verification failed** \u2014 attempting auto-fix...")
         claude.run_agent('implementer',
                          "Fix these test/lint failures:\n\n#{result[:output]}",
                          chdir: chdir)
@@ -183,6 +195,38 @@ module Ocak
       stdout.strip
     rescue StandardError
       nil
+    end
+
+    def post_pipeline_start_comment(issue_number, state)
+      total = @config.steps.size
+      conditional = conditional_step_count(state)
+      post_step_comment(issue_number,
+                        "\u{1F680} **Pipeline started** \u2014 complexity: `#{state[:complexity]}` " \
+                        "| steps: #{total} (#{conditional} may be skipped)")
+    end
+
+    def post_pipeline_summary_comment(issue_number, state, duration, success:, failed_phase: nil)
+      total = @config.steps.size
+      cost = format('%.2f', state[:total_cost])
+
+      if success
+        post_step_comment(issue_number,
+                          "\u{2705} **Pipeline complete** \u2014 #{state[:steps_run]}/#{total} steps run " \
+                          "| #{state[:steps_skipped]} skipped | $#{cost} total | #{duration}s")
+      else
+        post_step_comment(issue_number,
+                          "\u{274C} **Pipeline failed** at phase: #{failed_phase} \u2014 " \
+                          "#{state[:steps_run]}/#{total} steps completed | $#{cost} total")
+      end
+    end
+
+    def conditional_step_count(state)
+      @config.steps.count do |step|
+        step = symbolize(step)
+        step[:condition] ||
+          (step[:complexity] == 'full' && state[:complexity] == 'simple') ||
+          (step[:role].to_s == 'merge' && @config.manual_review)
+      end
     end
 
     def post_step_comment(issue_number, body)
