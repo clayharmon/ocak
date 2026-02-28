@@ -143,13 +143,19 @@ module Ocak
         Address the review feedback on PR ##{feedback[:pr_number]} for issue ##{feedback[:issue_number]}.
 
         ## Original Issue: #{feedback[:issue_title]}
+        <issue_body>
         #{feedback[:issue_body]}
+        </issue_body>
 
         ## Review Comments
+        <review_comments>
         #{reviews_text.empty? ? '(none)' : reviews_text}
+        </review_comments>
 
         ## PR Comments
+        <pr_comments>
         #{comments_text.empty? ? '(none)' : comments_text}
+        </pr_comments>
 
         ## Instructions
         Read the PR diff with `git diff main` to understand current changes.

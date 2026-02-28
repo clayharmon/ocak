@@ -63,6 +63,9 @@ All GitHub issue data fetching goes through `IssueFetcher#view`. Classes that ne
 ### Pipeline Comments
 Both `pipeline_executor.rb` and `hiz.rb` post GitHub comments at pipeline start, per-step completion, skip events, retry warnings, and pipeline summary. Always use `post_step_comment` (wraps `@issues&.comment` with `rescue StandardError => nil`) so comment failures never crash the pipeline. Emoji vocabulary: 🚀 start, 🔄 in-progress, ✅ success, ❌ failure, ⏭️ skip, ⚠️ warning.
 
+### Prompt Injection Protection
+All externally-sourced content embedded in agent prompts must be wrapped in XML delimiter tags. This prevents malicious content (e.g., a PR comment saying "IGNORE PREVIOUS INSTRUCTIONS...") from being interpreted as instructions by the agent. Examples: `<issue_body>`, `<review_output>`, `<review_comments>`, `<pr_comments>`. See `planner.rb#build_step_prompt` and `reready_processor.rb#build_feedback_prompt`.
+
 ### Two-Tiered Shutdown
 `PipelineRunner` implements two-tiered signal handling via `shutdown!`:
 - **Tier 1 (first Ctrl+C):** Sets `@shutting_down` flag. Current agent step finishes naturally, then the pipeline stops. Uncommitted worktree changes are committed with a `wip:` message, issue labels are reset to `:label_ready`, a ⚠️ comment is posted with the resume command, and a summary is printed to stderr. Exit code 130.

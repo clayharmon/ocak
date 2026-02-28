@@ -202,6 +202,78 @@ RSpec.describe Ocak::RereadyProcessor do
       end
     end
 
+    context 'prompt wraps external content in XML tags' do
+      before do
+        allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
+        allow(issues).to receive(:fetch_pr_comments).and_return({
+                                                                  comments: [{ 'author' => { 'login' => 'user' },
+                                                                               'body' => 'fix this' }],
+                                                                  reviews: [{ 'author' => { 'login' => 'rev' },
+                                                                              'state' => 'CHANGES_REQUESTED',
+                                                                              'body' => 'needs work' }]
+                                                                })
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title,body')
+          .and_return({ 'title' => 'Fix bug', 'body' => 'issue description here' })
+
+        # Checkout
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'auto/issue-42-abc123', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'checkout', 'auto/issue-42-abc123', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'pull', '--rebase', 'origin', 'auto/issue-42-abc123', chdir: '/project')
+          .and_return(['', '', success_status])
+
+        allow(claude).to receive(:run_agent).and_return(success_result)
+
+        # Verification passes
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rubocop', chdir: '/project')
+          .and_return(['', '', success_status])
+
+        # Push
+        allow(Open3).to receive(:capture3)
+          .with('git', 'add', '-A', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'status', '--porcelain', chdir: '/project')
+          .and_return(["M file.rb\n", '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'commit', '-m', 'fix: address review feedback', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '--force-with-lease', chdir: '/project')
+          .and_return(['', '', success_status])
+
+        allow(issues).to receive(:pr_transition).and_return(true)
+        allow(issues).to receive(:pr_comment).and_return(true)
+      end
+
+      it 'wraps issue body, review comments, and PR comments in XML tags' do
+        processor.process(pr)
+
+        expect(claude).to have_received(:run_agent) do |_agent, prompt, **_opts|
+          expect(prompt).to include('<issue_body>')
+          expect(prompt).to include('</issue_body>')
+          expect(prompt).to include('issue description here')
+
+          expect(prompt).to include('<review_comments>')
+          expect(prompt).to include('</review_comments>')
+          expect(prompt).to include('needs work')
+
+          expect(prompt).to include('<pr_comments>')
+          expect(prompt).to include('</pr_comments>')
+          expect(prompt).to include('fix this')
+        end
+      end
+    end
+
     context 'when cleanup checkout to main fails' do
       before do
         allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
