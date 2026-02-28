@@ -11,8 +11,7 @@ module Ocak
       'verify' => 'Review the changes for GitHub issue #%<issue>s. Run: git diff main',
       'security' => 'Security review changes for GitHub issue #%<issue>s. Run: git diff main',
       'document' => 'Add documentation for changes in GitHub issue #%<issue>s',
-      'merge' => 'Create a PR, merge it, and close issue #%<issue>s',
-      'create_pr' => 'Create a PR, merge it, and close issue #%<issue>s'
+      'merge' => 'Create a PR, merge it, and close issue #%<issue>s'
     }.freeze
 
     def build_step_prompt(role, issue_number, review_output)

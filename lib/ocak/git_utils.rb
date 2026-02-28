@@ -38,5 +38,14 @@ module Ocak
 
       true
     end
+
+    # Checks out the main branch. Intended for cleanup/ensure blocks.
+    # Rescues all errors so it never crashes the caller.
+    def self.checkout_main(chdir:, logger: nil)
+      _, stderr, status = Open3.capture3('git', 'checkout', 'main', chdir: chdir)
+      logger&.warn("Cleanup checkout to main failed: #{stderr}") unless status.success?
+    rescue StandardError => e
+      logger&.warn("Cleanup checkout to main error: #{e.message}")
+    end
   end
 end
