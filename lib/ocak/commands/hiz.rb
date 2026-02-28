@@ -18,6 +18,9 @@ module Ocak
 
       argument :issue, type: :integer, required: true, desc: 'Issue number to process'
       option :watch, type: :boolean, default: false, desc: 'Stream agent activity to terminal'
+      option :dry_run, type: :boolean, default: false, desc: 'Show pipeline plan without executing'
+      option :verbose, type: :boolean, default: false, desc: 'Increase log detail'
+      option :quiet, type: :boolean, default: false, desc: 'Suppress non-error output'
 
       STEP_MODELS = {
         'implementer' => 'sonnet',
@@ -35,6 +38,12 @@ module Ocak
       def call(issue:, **options)
         @config = Config.load
         issue_number = issue.to_i
+
+        if options[:dry_run]
+          print_dry_run(issue_number)
+          return
+        end
+
         logger = build_logger(issue_number)
         watch_formatter = options[:watch] ? WatchFormatter.new : nil
         claude = ClaudeRunner.new(config: @config, logger: logger, watch: watch_formatter)
@@ -49,6 +58,14 @@ module Ocak
       end
 
       private
+
+      def print_dry_run(issue_number)
+        puts "[DRY RUN] Hiz pipeline for issue ##{issue_number}:"
+        puts '  1. implement (implementer) [sonnet]'
+        puts '  2. review (reviewer) [haiku] || security (security-reviewer) [sonnet]'
+        has_verify = @config.test_command || @config.lint_check_command
+        puts '  3. final-verify (verification)' if has_verify
+      end
 
       def run_fast_pipeline(issue_number, claude:, logger:, issues:)
         @issues = issues

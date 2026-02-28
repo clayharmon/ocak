@@ -25,7 +25,10 @@ RSpec.describe Ocak::Commands::Resume do
                     lint_check_command: nil,
                     setup_command: nil,
                     language: 'ruby',
-                    steps: [{ 'agent' => 'implementer', 'role' => 'implement' }])
+                    steps: [
+                      { 'agent' => 'implementer', 'role' => 'implement' },
+                      { 'agent' => 'reviewer', 'role' => 'review' }
+                    ])
   end
 
   let(:saved_state) do
@@ -69,6 +72,26 @@ RSpec.describe Ocak::Commands::Resume do
       allow(merger).to receive(:merge).and_return(true)
 
       expect { command.call(issue: '42') }.to output(/Resuming issue #42/).to_stdout
+    end
+  end
+
+  context 'with --dry-run' do
+    before do
+      allow(pipeline_state).to receive(:load).with(42).and_return(saved_state)
+    end
+
+    it 'prints which steps would re-run and exits without executing' do
+      expect { command.call(issue: '42', dry_run: true) }.to output(
+        /\[DRY RUN\].*implement \(implementer\).*skip \(completed\).*review \(reviewer\).*run/m
+      ).to_stdout
+    end
+
+    it 'does not transition labels or run pipeline' do
+      allow(Ocak::PipelineRunner).to receive(:new)
+
+      command.call(issue: '42', dry_run: true)
+
+      expect(Ocak::PipelineRunner).not_to have_received(:new)
     end
   end
 

@@ -16,12 +16,17 @@ RSpec.describe Ocak::Commands::Design do
 
   after { FileUtils.remove_entry(dir) }
 
-  it 'prints usage when skill file exists and no description' do
+  it 'execs claude interactively when no description given' do
     skill_dir = File.join(dir, '.claude', 'skills', 'design')
     FileUtils.mkdir_p(skill_dir)
     File.write(File.join(skill_dir, 'SKILL.md'), '# Design')
 
-    expect { command.call }.to output(/Run this inside Claude Code/).to_stdout
+    skill_path = File.join(skill_dir, 'SKILL.md')
+    allow(command).to receive(:exec)
+
+    command.call
+
+    expect(command).to have_received(:exec).with('claude', '--skill', skill_path)
   end
 
   it 'execs claude with description when provided' do

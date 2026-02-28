@@ -16,14 +16,23 @@ module Ocak
 
       argument :issue, type: :integer, required: true, desc: 'Issue number to resume'
       option :watch, type: :boolean, default: false, desc: 'Stream agent activity to terminal'
+      option :dry_run, type: :boolean, default: false, desc: 'Show what would re-run without executing'
+      option :verbose, type: :boolean, default: false, desc: 'Increase log detail'
+      option :quiet, type: :boolean, default: false, desc: 'Suppress non-error output'
 
       def call(issue:, **options)
         config = Config.load
         issue_number = issue.to_i
         saved = load_state(config, issue_number)
-        chdir = resolve_worktree(config, saved)
 
         print_resume_info(issue_number, saved, config)
+
+        if options[:dry_run]
+          print_dry_run(saved, config)
+          return
+        end
+
+        chdir = resolve_worktree(config, saved)
         run_resumed_pipeline(config, issue_number, saved, chdir, options)
       rescue Config::ConfigNotFound => e
         warn "Error: #{e.message}"
@@ -49,6 +58,15 @@ module Ocak
         puts "  Worktree: #{saved[:worktree_path]}"
         puts "  Branch: #{saved[:branch]}"
         puts ''
+      end
+
+      def print_dry_run(saved, config)
+        completed = saved[:completed_steps] || []
+        puts '[DRY RUN] Steps that would re-run:'
+        config.steps.each_with_index do |step, idx|
+          status = completed.include?(idx) ? 'skip (completed)' : 'run'
+          puts "  #{idx + 1}. #{step['role']} (#{step['agent']}) — #{status}"
+        end
       end
 
       def run_resumed_pipeline(config, issue_number, saved, chdir, options)

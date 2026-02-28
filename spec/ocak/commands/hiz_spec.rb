@@ -34,6 +34,28 @@ RSpec.describe Ocak::Commands::Hiz do
     allow(Open3).to receive(:capture3).and_return(['', '', success_status])
   end
 
+  context 'with --dry-run' do
+    it 'prints the pipeline plan without executing' do
+      expect { command.call(issue: '42', dry_run: true) }.to output(
+        /\[DRY RUN\].*implement.*review.*security/m
+      ).to_stdout
+    end
+
+    it 'does not create a ClaudeRunner or run agents' do
+      allow(claude).to receive(:run_agent)
+
+      command.call(issue: '42', dry_run: true)
+
+      expect(Ocak::ClaudeRunner).not_to have_received(:new)
+    end
+
+    it 'includes verify step when test_command is configured' do
+      allow(config).to receive(:test_command).and_return('bundle exec rspec')
+
+      expect { command.call(issue: '42', dry_run: true) }.to output(/final-verify/).to_stdout
+    end
+  end
+
   context 'when pipeline succeeds' do
     before do
       allow(claude).to receive(:run_agent).and_return(success_result)

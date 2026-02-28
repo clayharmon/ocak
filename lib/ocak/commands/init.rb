@@ -205,10 +205,9 @@ module Ocak
         puts '  5. Run the pipeline: ocak run --once'
         puts ''
         puts 'Quick commands:'
-        puts '  ocak run --single 42    Run one issue'
+        puts '  ocak run 42             Run one issue'
         puts '  ocak run --watch        Run with live output'
         puts '  ocak status             Check pipeline state'
-        puts '  ocak audit              Run codebase audit'
       end
 
       def init_logger

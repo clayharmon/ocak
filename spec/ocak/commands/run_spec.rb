@@ -59,12 +59,21 @@ RSpec.describe Ocak::Commands::Run do
     expect(config).to have_received(:override).with(:poll_interval, 30)
   end
 
-  it 'passes options to PipelineRunner' do
-    command.call(watch: true, single: 42, dry_run: true, once: true)
+  it 'passes positional issue arg as single option to PipelineRunner' do
+    command.call(issue: '42', watch: true, dry_run: true, once: true)
 
     expect(Ocak::PipelineRunner).to have_received(:new).with(
       config: config,
-      options: { watch: true, single: 42, dry_run: true, once: true }
+      options: { watch: true, single: 42, dry_run: true, once: true, log_level: :normal }
+    )
+  end
+
+  it 'passes nil single when no issue argument given' do
+    command.call(watch: false)
+
+    expect(Ocak::PipelineRunner).to have_received(:new).with(
+      config: config,
+      options: hash_including(single: nil, watch: false, log_level: :normal)
     )
   end
 
@@ -82,6 +91,33 @@ RSpec.describe Ocak::Commands::Run do
     command.call(manual_review: true)
 
     expect(config).to have_received(:override).with(:manual_review, true)
+  end
+
+  it 'passes verbose log_level when --verbose is set' do
+    command.call(verbose: true)
+
+    expect(Ocak::PipelineRunner).to have_received(:new).with(
+      config: config,
+      options: hash_including(log_level: :verbose)
+    )
+  end
+
+  it 'passes quiet log_level when --quiet is set' do
+    command.call(quiet: true)
+
+    expect(Ocak::PipelineRunner).to have_received(:new).with(
+      config: config,
+      options: hash_including(log_level: :quiet)
+    )
+  end
+
+  it 'quiet wins when both --verbose and --quiet are set' do
+    command.call(verbose: true, quiet: true)
+
+    expect(Ocak::PipelineRunner).to have_received(:new).with(
+      config: config,
+      options: hash_including(log_level: :quiet)
+    )
   end
 
   it 'exits with error on ConfigNotFound' do

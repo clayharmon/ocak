@@ -15,18 +15,10 @@ module Ocak
           exit 1
         end
 
-        puts 'Starting interactive design session...'
-        puts 'This will open Claude Code with the /design skill.'
-        puts ''
-
         if description
           exec('claude', '--skill', skill_path, '--', description)
         else
-          puts 'Run this inside Claude Code:'
-          puts '  /design <description of what you want to build>'
-          puts ''
-          puts 'Or provide a description directly:'
-          puts '  ocak design "add user authentication with OAuth"'
+          exec('claude', '--skill', skill_path)
         end
       end
     end

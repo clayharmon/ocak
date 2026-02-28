@@ -29,13 +29,18 @@ module Ocak
       'pipeline' => :cyan
     }.freeze
 
-    def initialize(log_dir: nil, issue_number: nil, color: $stderr.tty?)
+    LEVELS = %i[quiet normal verbose].freeze
+
+    def initialize(log_dir: nil, issue_number: nil, color: $stderr.tty?, log_level: :normal)
       @color = color
+      @log_level = LEVELS.include?(log_level) ? log_level : :normal
       @mutex = Mutex.new
       @file_logger = setup_file_logger(log_dir, issue_number) if log_dir
     end
 
     def info(msg, agent: nil)
+      return if @log_level == :quiet
+
       log(:info, msg, agent: agent)
     end
 
@@ -47,8 +52,11 @@ module Ocak
       log(:error, msg, agent: agent, color: :red)
     end
 
-    def debug(msg, agent: nil) # rubocop:disable Lint/UnusedMethodArgument
+    def debug(msg, agent: nil)
       @file_logger&.debug(msg)
+      return unless @log_level == :verbose
+
+      log(:debug, msg, agent: agent, color: :dim)
     end
 
     attr_reader :log_file_path
