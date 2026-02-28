@@ -44,6 +44,39 @@ RSpec.describe Ocak::PipelineLogger do
       expect { logger.info('plain') }.to output(/INFO: plain/).to_stderr_from_any_process
     end
   end
+
+  describe 'log level suppression' do
+    it 'suppresses info messages in quiet mode' do
+      logger = described_class.new(color: false, log_level: :quiet)
+      expect { logger.info('hidden') }.not_to output.to_stderr_from_any_process
+    end
+
+    it 'still outputs warn messages in quiet mode' do
+      logger = described_class.new(color: false, log_level: :quiet)
+      expect { logger.warn('visible') }.to output(/WARN: visible/).to_stderr_from_any_process
+    end
+
+    it 'suppresses debug messages in normal mode' do
+      logger = described_class.new(color: false, log_level: :normal)
+      expect { logger.debug('hidden') }.not_to output.to_stderr_from_any_process
+    end
+
+    it 'outputs debug messages in verbose mode' do
+      logger = described_class.new(color: false, log_level: :verbose)
+      expect { logger.debug('visible') }.to output(/DEBUG: visible/).to_stderr_from_any_process
+    end
+
+    it 'writes debug to file logger even in normal mode' do
+      dir = Dir.mktmpdir
+      logger = described_class.new(log_dir: dir, color: false, log_level: :normal)
+      logger.debug('file only')
+
+      content = File.read(logger.log_file_path)
+      expect(content).to include('file only')
+    ensure
+      FileUtils.remove_entry(dir)
+    end
+  end
 end
 
 RSpec.describe Ocak::WatchFormatter do

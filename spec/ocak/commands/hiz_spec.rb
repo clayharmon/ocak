@@ -500,6 +500,16 @@ RSpec.describe Ocak::Commands::Hiz do
     end
   end
 
+  describe 'create_branch failure' do
+    it 'raises RuntimeError when git checkout -b fails' do
+      allow(Open3).to receive(:capture3)
+        .with('git', 'checkout', '-b', anything, chdir: '/project')
+        .and_return(['', 'fatal: cannot create branch', failure_status])
+
+      expect { command.call(issue: '42') }.to raise_error(RuntimeError, /Failed to create branch/)
+    end
+  end
+
   it 'exits with error on ConfigNotFound' do
     allow(Ocak::Config).to receive(:load).and_raise(Ocak::Config::ConfigNotFound, 'not found')
 

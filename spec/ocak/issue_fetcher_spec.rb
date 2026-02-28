@@ -305,6 +305,17 @@ RSpec.describe Ocak::IssueFetcher do
       expect(result[:comments]).to eq([])
       expect(result[:reviews]).to eq([])
     end
+
+    it 'returns empty arrays on malformed JSON and logs warning' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'view', '10', '--json', 'comments,reviews', chdir: '/project')
+        .and_return(['not valid json{{{', '', success_status])
+
+      result = fetcher.fetch_pr_comments(10)
+      expect(result[:comments]).to eq([])
+      expect(result[:reviews]).to eq([])
+      expect(logger).to have_received(:warn).with(/Failed to parse PR comments JSON/)
+    end
   end
 
   describe '#extract_issue_number_from_pr' do
@@ -487,6 +498,15 @@ RSpec.describe Ocak::IssueFetcher do
         .and_return(['', 'not found', failure_status])
 
       expect(fetcher.view(999)).to be_nil
+    end
+
+    it 'returns nil on malformed JSON and logs warning' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'issue', 'view', '42', '--json', 'number,title,body,labels', chdir: '/project')
+        .and_return(['not valid json', '', success_status])
+
+      expect(fetcher.view(42)).to be_nil
+      expect(logger).to have_received(:warn).with(/Failed to parse issue view JSON/)
     end
   end
 end

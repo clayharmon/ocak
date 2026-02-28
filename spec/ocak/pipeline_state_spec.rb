@@ -93,5 +93,17 @@ RSpec.describe Ocak::PipelineState do
     it 'returns empty array when no states exist' do
       expect(state.list).to eq([])
     end
+
+    it 'warns and skips corrupt state files' do
+      state.save(1, completed_steps: [0])
+      File.write(File.join(dir, 'issue-2-state.json'), 'not valid json{{{')
+      state.save(3, completed_steps: [0, 1])
+
+      all = nil
+      expect { all = state.list }.to output(/Failed to parse pipeline state file/).to_stderr
+
+      expect(all.size).to eq(2)
+      expect(all.map { |s| s[:issue_number] }).to contain_exactly(1, 3)
+    end
   end
 end

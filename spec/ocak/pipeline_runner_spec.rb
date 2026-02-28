@@ -948,7 +948,7 @@ RSpec.describe Ocak::PipelineRunner do
         )
       end
 
-      it 'does not crash when commit fails during shutdown' do
+      it 'does not crash when commit fails during shutdown and logs a warning' do
         allow(Ocak::GitUtils).to receive(:commit_changes).and_raise(StandardError, 'git error')
         allow(claude).to receive(:run_agent) do
           runner.instance_variable_set(:@shutting_down, true)
@@ -956,9 +956,10 @@ RSpec.describe Ocak::PipelineRunner do
         end
 
         expect { runner.run }.not_to raise_error
+        expect(logger).to have_received(:warn).with(/Failed to handle interrupted issue/)
       end
 
-      it 'does not crash when comment fails during shutdown' do
+      it 'does not crash when comment fails during shutdown and logs a warning' do
         allow(issues).to receive(:comment).and_raise(StandardError, 'network error')
         allow(claude).to receive(:run_agent) do
           runner.instance_variable_set(:@shutting_down, true)
@@ -966,6 +967,7 @@ RSpec.describe Ocak::PipelineRunner do
         end
 
         expect { runner.run }.not_to raise_error
+        expect(logger).to have_received(:warn).with(/Failed to handle interrupted issue/)
       end
 
       it 'does not remove worktree for interrupted issues' do
@@ -993,6 +995,53 @@ RSpec.describe Ocak::PipelineRunner do
 
         expect(merger).not_to have_received(:merge)
       end
+    end
+  end
+
+  describe 'process_one_issue unexpected error' do
+    subject(:runner) { described_class.new(config: config, options: { once: true }) }
+
+    let(:worktree) do
+      Ocak::WorktreeManager::Worktree.new(
+        path: '/project/.claude/worktrees/issue-1',
+        branch: 'auto/issue-1-abc',
+        issue_number: 1
+      )
+    end
+    let(:worktree_manager) do
+      instance_double(Ocak::WorktreeManager, clean_stale: [], create: worktree, remove: nil)
+    end
+
+    before do
+      allow(Ocak::WorktreeManager).to receive(:new).and_return(worktree_manager)
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(issues).to receive(:fetch_ready).and_return([{ 'number' => 1, 'title' => 'A' }])
+      allow(issues).to receive(:transition)
+      allow(issues).to receive(:comment)
+    end
+
+    it 'transitions to failed label on unexpected error' do
+      allow(claude).to receive(:run_agent).and_raise(StandardError, 'kaboom')
+
+      runner.run
+
+      expect(issues).to have_received(:transition).with(1, from: 'in-progress', to: 'pipeline-failed')
+    end
+  end
+
+  describe 'cleanup_stale_worktrees error' do
+    subject(:runner) { described_class.new(config: config, options: { once: true }) }
+
+    before do
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(issues).to receive(:fetch_ready).and_return([])
+    end
+
+    it 'warns and continues when cleanup raises' do
+      allow(Ocak::WorktreeManager).to receive(:new).and_raise(StandardError, 'disk error')
+
+      expect { runner.run }.not_to raise_error
+      expect(logger).to have_received(:warn).with(/Stale worktree cleanup failed/)
     end
   end
 

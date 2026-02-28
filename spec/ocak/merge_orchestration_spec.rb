@@ -159,6 +159,29 @@ RSpec.describe Ocak::MergeOrchestration do
     end
   end
 
+  describe '#post_audit_comment_single' do
+    it 'warns and returns when PR cannot be found' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'view', '--json', 'number', chdir: '/project')
+        .and_return(['', '', instance_double(Process::Status, success?: false)])
+
+      host.post_audit_comment_single('findings here', logger: logger, issues: issues)
+
+      expect(logger).to have_received(:warn).with(/Could not find PR to post audit comment/)
+      expect(issues).not_to have_received(:pr_comment)
+    end
+
+    it 'posts audit comment when PR is found' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'view', '--json', 'number', chdir: '/project')
+        .and_return(['{"number":99}', '', instance_double(Process::Status, success?: true)])
+
+      host.post_audit_comment_single('findings here', logger: logger, issues: issues)
+
+      expect(issues).to have_received(:pr_comment).with(99, /Audit Report.*findings here/m)
+    end
+  end
+
   describe '#find_pr_for_branch' do
     it 'returns PR number from gh cli output' do
       allow(Open3).to receive(:capture3)

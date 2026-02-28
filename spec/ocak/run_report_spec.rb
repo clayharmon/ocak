@@ -140,6 +140,14 @@ RSpec.describe Ocak::RunReport do
       expect(hash).to have_key(:total_cost_usd)
       expect(hash).to have_key(:steps)
     end
+
+    it 'returns nil total_duration_s when finish has not been called' do
+      hash = report.to_h(42)
+
+      expect(hash[:finished_at]).to be_nil
+      expect(hash[:total_duration_s]).to be_nil
+      expect(hash[:started_at]).not_to be_nil
+    end
   end
 
   describe '.load_all' do

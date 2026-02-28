@@ -554,4 +554,30 @@ RSpec.describe Ocak::MergeManager do
       end
     end
   end
+
+  describe '#resolve_conflicts_via_agent (empty conflict list)' do
+    let(:success_status) { instance_double(Process::Status, success?: true) }
+
+    before do
+      allow(Open3).to receive(:capture3)
+        .with('git', 'status', '--porcelain', chdir: worktree.path)
+        .and_return(['', '', success_status])
+    end
+
+    it 'aborts merge and returns false when no conflicting files found' do
+      allow(Open3).to receive(:capture3)
+        .with('git', 'diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
+        .and_return(['', '', success_status])
+      allow(Open3).to receive(:capture3)
+        .with('git', 'merge', '--abort', chdir: worktree.path)
+        .and_return(['', '', success_status])
+
+      result = manager.send(:resolve_conflicts_via_agent, worktree)
+
+      expect(result).to be false
+      expect(logger).to have_received(:warn).with(/No conflicting files found/)
+      expect(Open3).to have_received(:capture3)
+        .with('git', 'merge', '--abort', chdir: worktree.path)
+    end
+  end
 end

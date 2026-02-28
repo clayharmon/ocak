@@ -292,6 +292,19 @@ RSpec.describe Ocak::StackDetector do
     end
   end
 
+  context 'with malformed package.json' do
+    before do
+      write_file('package.json', 'not valid json{{{')
+      write_file('tsconfig.json', '{}')
+    end
+
+    it 'detects language but returns false for package checks' do
+      expect { result }.to output(/Failed to parse package.json/).to_stderr
+      expect(result.language).to eq('typescript')
+      expect(result.framework).to be_nil
+    end
+  end
+
   context 'with an empty directory' do
     it 'returns unknown language' do
       expect(result.language).to eq('unknown')
