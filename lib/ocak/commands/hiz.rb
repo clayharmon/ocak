@@ -51,27 +51,41 @@ module Ocak
       private
 
       def run_fast_pipeline(issue_number, claude:, logger:, issues:)
+        @issues = issues
+        @total_cost = 0.0
+        @steps_run = 0
+        start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         chdir = @config.project_dir
+
+        post_hiz_start_comment(issue_number)
         branch = create_branch(issue_number, chdir)
 
         failure = run_agents(issue_number, claude: claude, logger: logger, chdir: chdir)
         if failure
+          duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
+          post_hiz_summary_comment(issue_number, duration, success: false, failed_phase: failure[:phase])
           handle_failure(issue_number, failure[:phase], failure[:output], issues: issues, logger: logger)
           return
         end
 
-        verification_failure = run_final_verification_step(claude: claude, logger: logger, chdir: chdir)
+        verification_failure = run_final_verification_step(issue_number, claude: claude, logger: logger, chdir: chdir)
         if verification_failure
+          duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
+          post_hiz_summary_comment(issue_number, duration, success: false, failed_phase: 'final-verify')
           handle_failure(issue_number, 'final-verify', verification_failure[:output],
                          issues: issues, logger: logger)
           return
         end
 
+        duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
+        post_hiz_summary_comment(issue_number, duration, success: true)
         push_and_create_pr(issue_number, branch, logger: logger, issues: issues, chdir: chdir)
       end
 
       def run_agents(issue_number, claude:, logger:, chdir:)
         result = run_step(IMPLEMENT_STEP, issue_number, claude: claude, logger: logger, chdir: chdir)
+        @steps_run += 1
+        @total_cost += result.cost_usd.to_f
         unless result.success?
           logger.error("Implementation failed for issue ##{issue_number}")
           return { phase: 'implement', output: result.output }
@@ -103,6 +117,10 @@ module Ocak
         threads.each_with_index do |thread, i|
           result = thread.value
           step = REVIEW_STEPS[i]
+          if result
+            @steps_run += 1
+            @total_cost += result.cost_usd.to_f
+          end
           next if result.nil?
           next if result.success?
 
@@ -115,8 +133,11 @@ module Ocak
         role = step[:role]
         model = STEP_MODELS[agent]
         logger.info("--- Phase: #{role} (#{agent}) [#{model}] ---")
+        post_step_comment(issue_number, "\u{1F504} **Phase: #{role}** (#{agent})")
         prompt = build_prompt(role, issue_number)
-        claude.run_agent(agent, prompt, chdir: chdir, model: model)
+        result = claude.run_agent(agent, prompt, chdir: chdir, model: model)
+        post_step_completion_comment(issue_number, role, result)
+        result
       end
 
       def build_prompt(role, issue_number)
@@ -128,22 +149,31 @@ module Ocak
         end
       end
 
-      def run_final_verification_step(claude:, logger:, chdir:)
+      def run_final_verification_step(issue_number, claude:, logger:, chdir:)
         return nil unless @config.test_command || @config.lint_check_command
 
         logger.info('--- Final verification ---')
+        post_step_comment(issue_number, "\u{1F504} **Phase: final-verify** (verification)")
         result = run_final_checks(logger, chdir: chdir)
-        return nil if result[:success]
 
-        logger.warn('Final checks failed, attempting fix...')
-        claude.run_agent('implementer',
-                         "Fix these test/lint failures:\n\n#{result[:output]}",
-                         chdir: chdir, model: STEP_MODELS['implementer'])
+        unless result[:success]
+          logger.warn('Final checks failed, attempting fix...')
+          post_step_comment(issue_number,
+                            "\u{26A0}\u{FE0F} **Final verification failed** \u2014 attempting auto-fix...")
+          claude.run_agent('implementer',
+                           "Fix these test/lint failures:\n\n#{result[:output]}",
+                           chdir: chdir, model: STEP_MODELS['implementer'])
+          result = run_final_checks(logger, chdir: chdir)
+        end
 
-        result = run_final_checks(logger, chdir: chdir)
-        return nil if result[:success]
-
-        { success: false, phase: 'final-verify', output: result[:output] }
+        @steps_run += 1
+        if result[:success]
+          post_step_comment(issue_number, "\u{2705} **Phase: final-verify** completed")
+          nil
+        else
+          post_step_comment(issue_number, "\u{274C} **Phase: final-verify** failed")
+          { success: false, phase: 'final-verify', output: result[:output] }
+        end
       end
 
       def push_and_create_pr(issue_number, branch, logger:, issues:, chdir:)
@@ -198,6 +228,43 @@ module Ocak
 
       def build_logger(issue_number)
         PipelineLogger.new(log_dir: File.join(@config.project_dir, @config.log_dir), issue_number: issue_number)
+      end
+
+      def post_step_comment(issue_number, body)
+        @issues&.comment(issue_number, body)
+      rescue StandardError
+        nil
+      end
+
+      def post_step_completion_comment(issue_number, role, result)
+        duration = (result.duration_ms.to_f / 1000).round
+        cost = format('%.3f', result.cost_usd.to_f)
+        if result.success?
+          post_step_comment(issue_number, "\u{2705} **Phase: #{role}** completed \u2014 #{duration}s | $#{cost}")
+        else
+          post_step_comment(issue_number, "\u{274C} **Phase: #{role}** failed \u2014 #{duration}s | $#{cost}")
+        end
+      end
+
+      def post_hiz_start_comment(issue_number)
+        steps = "implement \u2192 review \u2225 security"
+        steps += " \u2192 verify" if @config.test_command || @config.lint_check_command
+        post_step_comment(issue_number, "\u{1F680} **Hiz (fast mode) started** \u2014 #{steps}")
+      end
+
+      def post_hiz_summary_comment(issue_number, duration, success:, failed_phase: nil)
+        total = 3 + (@config.test_command || @config.lint_check_command ? 1 : 0)
+        cost = format('%.2f', @total_cost)
+
+        if success
+          post_step_comment(issue_number,
+                            "\u{2705} **Pipeline complete** \u2014 #{@steps_run}/#{total} steps run " \
+                            "| 0 skipped | $#{cost} total | #{duration}s")
+        else
+          post_step_comment(issue_number,
+                            "\u{274C} **Pipeline failed** at phase: #{failed_phase} \u2014 " \
+                            "#{@steps_run}/#{total} steps completed | $#{cost} total")
+        end
       end
     end
   end

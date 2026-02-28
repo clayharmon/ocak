@@ -58,6 +58,9 @@ Parallel issues get separate git worktrees under `.claude/worktrees/`. After all
 ### Issue Data Access
 All GitHub issue data fetching goes through `IssueFetcher#view`. Classes that need issue data receive an `IssueFetcher` instance via constructor injection (`issues:` keyword param) rather than calling `gh` directly.
 
+### Pipeline Comments
+Both `pipeline_executor.rb` and `hiz.rb` post GitHub comments at pipeline start, per-step completion, skip events, retry warnings, and pipeline summary. Always use `post_step_comment` (wraps `@issues&.comment` with `rescue StandardError => nil`) so comment failures never crash the pipeline. Emoji vocabulary: 🚀 start, 🔄 in-progress, ✅ success, ❌ failure, ⏭️ skip, ⚠️ warning.
+
 ## Development
 
 ```bash
