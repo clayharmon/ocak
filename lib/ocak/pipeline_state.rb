@@ -5,8 +5,9 @@ require 'fileutils'
 
 module Ocak
   class PipelineState
-    def initialize(log_dir:)
+    def initialize(log_dir:, logger: nil)
       @log_dir = log_dir
+      @logger = logger
     end
 
     def save(issue_number, completed_steps:, worktree_path: nil, branch: nil)
@@ -18,6 +19,10 @@ module Ocak
                                                                   branch: branch,
                                                                   updated_at: Time.now.iso8601
                                                                 }))
+    rescue StandardError => e
+      @logger&.warn("Pipeline state save failed for issue ##{issue_number}: #{e.message}") ||
+        warn("Pipeline state save failed for issue ##{issue_number}: #{e.message}")
+      nil
     end
 
     def load(issue_number)

@@ -33,6 +33,39 @@ RSpec.describe Ocak::PipelineState do
     end
   end
 
+  describe '#save error handling' do
+    it 'does not raise when File.write fails with Errno::ENOSPC' do
+      allow(File).to receive(:write).and_raise(Errno::ENOSPC)
+
+      expect { state.save(42, completed_steps: [0]) }.not_to raise_error
+    end
+
+    it 'returns nil on failure' do
+      allow(File).to receive(:write).and_raise(Errno::EACCES, 'Permission denied')
+
+      expect(state.save(42, completed_steps: [0])).to be_nil
+    end
+
+    it 'warns with issue number and error message' do
+      allow(File).to receive(:write).and_raise(Errno::ENOSPC)
+
+      expect { state.save(42, completed_steps: [0]) }.to output(
+        /Pipeline state save failed for issue #42/
+      ).to_stderr
+    end
+
+    it 'uses logger when provided' do
+      logger = instance_double(Logger)
+      allow(logger).to receive(:warn)
+      logged_state = described_class.new(log_dir: dir, logger: logger)
+      allow(File).to receive(:write).and_raise(Errno::ENOSPC)
+
+      logged_state.save(42, completed_steps: [0])
+
+      expect(logger).to have_received(:warn).with(/Pipeline state save failed for issue #42/)
+    end
+  end
+
   describe '#delete' do
     it 'removes the state file' do
       state.save(42, completed_steps: [0])
