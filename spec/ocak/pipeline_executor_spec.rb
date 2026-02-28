@@ -213,34 +213,91 @@ RSpec.describe Ocak::PipelineExecutor do
   end
 
   describe 'audit mode' do
-    let(:steps_with_merge) do
+    let(:steps_with_audit_and_merge) do
       [
         { 'agent' => 'implementer', 'role' => 'implement' },
-        { 'agent' => 'reviewer', 'role' => 'review' },
+        { 'agent' => 'auditor', 'role' => 'audit' },
         { 'agent' => 'merger', 'role' => 'merge' }
       ]
     end
 
     before do
-      allow(config).to receive(:steps).and_return(steps_with_merge)
+      allow(config).to receive(:steps).and_return(steps_with_audit_and_merge)
       allow(config).to receive(:audit_mode).and_return(true)
       allow(claude).to receive(:run_agent).and_return(success_result)
     end
 
-    it 'skips the merge step when audit_mode is true' do
+    it 'runs merge when audit is clean' do
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(claude).to have_received(:run_agent).with('merger', anything, chdir: anything)
+    end
+
+    it 'skips merge when audit has BLOCK findings' do
+      block_result = Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'BLOCK: security issue')
+      allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                          .and_return(block_result)
+
       executor.run_pipeline(42, logger: logger, claude: claude)
 
       expect(claude).not_to have_received(:run_agent).with('merger', anything, chdir: anything)
     end
 
-    it 'still runs non-merge steps' do
+    it "skips merge when audit has \u{1F534} findings" do
+      allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                          .and_return(blocking_result)
+
       executor.run_pipeline(42, logger: logger, claude: claude)
 
-      expect(claude).to have_received(:run_agent).with('implementer', anything, chdir: anything)
-      expect(claude).to have_received(:run_agent).with('reviewer', anything, chdir: anything)
+      expect(claude).not_to have_received(:run_agent).with('merger', anything, chdir: anything)
     end
 
-    it 'skips merge when both audit_mode and manual_review are true' do
+    it 'runs merge when audit_mode is on but no audit step exists' do
+      steps_no_audit = [
+        { 'agent' => 'implementer', 'role' => 'implement' },
+        { 'agent' => 'merger', 'role' => 'merge' }
+      ]
+      allow(config).to receive(:steps).and_return(steps_no_audit)
+
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(claude).to have_received(:run_agent).with('merger', anything, chdir: anything)
+    end
+
+    it 'returns audit_blocked: true when audit has findings' do
+      block_result = Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'BLOCK: issue')
+      allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                          .and_return(block_result)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(result[:audit_blocked]).to be true
+      expect(result[:audit_output]).to match(/BLOCK/)
+    end
+
+    it 'returns audit_blocked: false when audit is clean' do
+      result = executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(result[:audit_blocked]).to be false
+      expect(result[:audit_output]).to eq('Done')
+    end
+
+    it 'posts skip comment with "audit found blocking issues" reason' do
+      issues_fetcher = instance_double(Ocak::IssueFetcher)
+      allow(issues_fetcher).to receive(:comment)
+      executor_with_issues = described_class.new(config: config, issues: issues_fetcher)
+
+      block_result = Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'BLOCK: issue')
+      allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                          .and_return(block_result)
+
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(issues_fetcher).to have_received(:comment)
+        .with(42, /\u{23ED}.*\*\*Skipping merge\*\*.*audit found blocking issues/)
+    end
+
+    it 'skips merge when both audit_mode and manual_review are on and audit is clean' do
       allow(config).to receive(:manual_review).and_return(true)
 
       executor.run_pipeline(42, logger: logger, claude: claude)
@@ -248,15 +305,22 @@ RSpec.describe Ocak::PipelineExecutor do
       expect(claude).not_to have_received(:run_agent).with('merger', anything, chdir: anything)
     end
 
-    it 'posts skip comment with audit mode reason' do
-      issues_fetcher = instance_double(Ocak::IssueFetcher)
-      allow(issues_fetcher).to receive(:comment)
-      executor_with_issues = described_class.new(config: config, issues: issues_fetcher)
+    it 'treats audit agent failure as blocking' do
+      failed = Ocak::ClaudeRunner::AgentResult.new(success: false, output: 'Agent crashed')
+      allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                          .and_return(failed)
 
-      executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
+      result = executor.run_pipeline(42, logger: logger, claude: claude)
 
-      expect(issues_fetcher).to have_received(:comment)
-        .with(42, /\u{23ED}.*\*\*Skipping merge\*\*.*audit mode/)
+      expect(result[:audit_blocked]).to be true
+      expect(claude).not_to have_received(:run_agent).with('merger', anything, chdir: anything)
+    end
+
+    it 'still runs non-merge steps' do
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(claude).to have_received(:run_agent).with('implementer', anything, chdir: anything)
+      expect(claude).to have_received(:run_agent).with('auditor', anything, chdir: anything)
     end
   end
 

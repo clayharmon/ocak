@@ -61,8 +61,8 @@ module Ocak
       result = run_pipeline(issue_number, logger: logger, claude: claude)
 
       if result[:success]
-        if @config.audit_mode
-          handle_single_audit(issue_number, logger: logger, claude: claude, issues: issues)
+        if result[:audit_blocked]
+          handle_single_audit_blocked(issue_number, result, logger: logger, claude: claude, issues: issues)
         elsif @config.manual_review
           handle_single_manual_review(issue_number, logger: logger, claude: claude, issues: issues)
         else
@@ -141,9 +141,8 @@ module Ocak
       merger = MergeManager.new(
         config: @config, claude: build_claude(logger), logger: logger, issues: issues, watch: @watch_formatter
       )
-      claude = build_claude(logger)
       results.select { |r| r[:success] }.each do |result|
-        merge_completed_issue(result, merger: merger, issues: issues, logger: logger, claude: claude)
+        merge_completed_issue(result, merger: merger, issues: issues, logger: logger)
       end
 
       results.each do |result|
@@ -180,7 +179,8 @@ module Ocak
 
     def build_issue_result(result, issue_number:, worktree:, issues:)
       if result[:success]
-        { issue_number: issue_number, success: true, worktree: worktree }
+        { issue_number: issue_number, success: true, worktree: worktree,
+          audit_blocked: result[:audit_blocked], audit_output: result[:audit_output] }
       else
         issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
         issues.comment(issue_number,
@@ -189,9 +189,9 @@ module Ocak
       end
     end
 
-    def merge_completed_issue(result, merger:, issues:, logger:, claude:)
-      if @config.audit_mode
-        handle_batch_audit(result, merger: merger, issues: issues, logger: logger, claude: claude)
+    def merge_completed_issue(result, merger:, issues:, logger:)
+      if result[:audit_blocked]
+        handle_batch_audit(result, merger: merger, issues: issues, logger: logger)
       elsif @config.manual_review
         handle_batch_manual_review(result, merger: merger, issues: issues, logger: logger)
       elsif merger.merge(result[:issue_number], result[:worktree])
@@ -223,43 +223,19 @@ module Ocak
       end
     end
 
-    def handle_single_audit(issue_number, logger:, claude:, issues:)
-      audit_result = run_audit_gate(issue_number, logger: logger, claude: claude, chdir: @config.project_dir)
-
-      if audit_has_findings?(audit_result)
-        handle_single_manual_review(issue_number, logger: logger, claude: claude, issues: issues)
-        post_audit_comment_single(audit_result, logger: logger, issues: issues)
-      elsif @config.manual_review
-        handle_single_manual_review(issue_number, logger: logger, claude: claude, issues: issues)
-      else
-        claude.run_agent('merger', "Create a PR, merge it, and close issue ##{issue_number}",
-                         chdir: @config.project_dir)
-        issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_completed)
-        logger.info("Issue ##{issue_number} completed successfully")
-      end
+    def handle_single_audit_blocked(issue_number, result, logger:, claude:, issues:)
+      handle_single_manual_review(issue_number, logger: logger, claude: claude, issues: issues)
+      post_audit_comment_single(result[:audit_output], logger: logger, issues: issues)
     end
 
-    def handle_batch_audit(result, merger:, issues:, logger:, claude:)
-      audit_result = run_audit_gate(result[:issue_number], logger: logger, claude: claude,
-                                                           chdir: result[:worktree].path)
-
-      if audit_has_findings?(audit_result)
-        create_pr_with_audit(result, audit_result, merger: merger, issues: issues, logger: logger)
-      elsif @config.manual_review
-        handle_batch_manual_review(result, merger: merger, issues: issues, logger: logger)
-      elsif merger.merge(result[:issue_number], result[:worktree])
-        issues.transition(result[:issue_number], from: @config.label_in_progress, to: @config.label_completed)
-        logger.info("Issue ##{result[:issue_number]} merged successfully")
-      else
-        issues.transition(result[:issue_number], from: @config.label_in_progress, to: @config.label_failed)
-        logger.error("Issue ##{result[:issue_number]} merge failed")
-      end
+    def handle_batch_audit(result, merger:, issues:, logger:)
+      create_pr_with_audit(result, result[:audit_output], merger: merger, issues: issues, logger: logger)
     end
 
-    def create_pr_with_audit(result, audit_result, merger:, issues:, logger:)
+    def create_pr_with_audit(result, audit_output, merger:, issues:, logger:)
       pr_number = merger.create_pr_only(result[:issue_number], result[:worktree])
       if pr_number
-        issues.pr_comment(pr_number, "## Audit Report\n\n#{audit_result.output}")
+        issues.pr_comment(pr_number, "## Audit Report\n\n#{audit_output}")
         issues.transition(result[:issue_number], from: @config.label_in_progress,
                                                  to: @config.label_awaiting_review)
         logger.info("Issue ##{result[:issue_number]} PR ##{pr_number} created (audit findings)")
@@ -269,24 +245,14 @@ module Ocak
       end
     end
 
-    def run_audit_gate(issue_number, logger:, claude:, chdir:)
-      logger.info("Running audit gate for issue ##{issue_number}")
-      claude.run_agent('auditor', 'Audit the changed files. Run: git diff main --name-only', chdir: chdir)
-    end
-
-    def audit_has_findings?(result)
-      # Treat agent failure as findings — err on the side of caution rather than auto-merging
-      !result.success? || result.output.to_s.match?(/BLOCK|🔴/)
-    end
-
-    def post_audit_comment_single(audit_result, logger:, issues:)
+    def post_audit_comment_single(audit_output, logger:, issues:)
       pr_number = find_pr_for_branch(logger: logger)
       unless pr_number
-        logger.warn("Could not find PR to post audit comment — findings were: #{audit_result.output[0..200]}")
+        logger.warn("Could not find PR to post audit comment — findings were: #{audit_output.to_s[0..200]}")
         return
       end
 
-      issues.pr_comment(pr_number, "## Audit Report\n\n#{audit_result.output}")
+      issues.pr_comment(pr_number, "## Audit Report\n\n#{audit_output}")
       logger.info("Posted audit comment on PR ##{pr_number}")
     end
 
