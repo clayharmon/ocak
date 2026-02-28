@@ -21,6 +21,7 @@ lib/ocak/
 ├── git_utils.rb           # Shared git helpers — commit_changes (porcelain check → add -A → commit with exit-status checks)
 ├── planner.rb             # Batch planning: groups issues for parallel/sequential execution
 ├── pipeline_state.rb      # Persists per-issue pipeline progress for resume support
+├── run_report.rb          # Writes per-run JSON reports to .ocak/reports/; RunReport#record_step, #finish, #save, .load_all
 ├── verification.rb        # Final verification checks (tests + scoped lint) extracted module
 ├── process_runner.rb      # Subprocess runner with streaming line output and timeout support
 ├── process_registry.rb    # Thread-safe PID registry for subprocess tracking during shutdown

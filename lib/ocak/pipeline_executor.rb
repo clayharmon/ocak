@@ -3,6 +3,7 @@
 require 'open3'
 require 'fileutils'
 require_relative 'pipeline_state'
+require_relative 'run_report'
 require_relative 'verification'
 require_relative 'planner'
 
@@ -25,9 +26,8 @@ module Ocak
       chdir ||= @config.project_dir
       logger.info("=== Starting pipeline for issue ##{issue_number} (#{complexity}) ===")
 
-      state = { last_review_output: nil, had_fixes: false, completed_steps: [], total_cost: 0.0,
-                complexity: complexity, steps_run: 0, steps_skipped: 0,
-                audit_output: nil, audit_blocked: false }
+      report = RunReport.new(complexity: complexity)
+      state = build_initial_state(complexity, report)
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       post_pipeline_start_comment(issue_number, state)
 
@@ -35,25 +35,45 @@ module Ocak
                                                         skip_steps: skip_steps)
       log_cost_summary(state[:total_cost], logger)
 
-      return build_interrupted_result(issue_number, state, logger) if state[:interrupted]
-      return post_failure_and_return(issue_number, state, failure, start_time) if failure
+      return handle_interrupted(issue_number, state, report, logger) if state[:interrupted]
+      return handle_failure(issue_number, state, failure, report, start_time) if failure
 
       failure = run_final_verification(issue_number, logger: logger, claude: claude, chdir: chdir)
-      return post_failure_and_return(issue_number, state, failure, start_time) if failure
+      return handle_failure(issue_number, state, failure, report, start_time) if failure
 
       pipeline_state.delete(issue_number)
+      finish_success(issue_number, state, report, start_time, logger)
+    end
 
+    private
+
+    def build_initial_state(complexity, report)
+      { last_review_output: nil, had_fixes: false, completed_steps: [], total_cost: 0.0,
+        complexity: complexity, steps_run: 0, steps_skipped: 0,
+        audit_output: nil, audit_blocked: false, report: report }
+    end
+
+    def handle_interrupted(issue_number, state, report, logger)
+      save_report(report, issue_number, success: false, failed_phase: 'interrupted')
+      logger.info("=== Pipeline interrupted for issue ##{issue_number} ===")
+      build_interrupted_result(state)
+    end
+
+    def handle_failure(issue_number, state, failure, report, start_time)
+      save_report(report, issue_number, success: false, failed_phase: failure[:phase])
+      post_failure_and_return(issue_number, state, failure, start_time)
+    end
+
+    def finish_success(issue_number, state, report, start_time, logger)
       duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
+      save_report(report, issue_number, success: true)
       post_pipeline_summary_comment(issue_number, state, duration, success: true)
       logger.info("=== Pipeline complete for issue ##{issue_number} ===")
       { success: true, output: 'Pipeline completed successfully',
         audit_blocked: state[:audit_blocked], audit_output: state[:audit_output] }
     end
 
-    private
-
-    def build_interrupted_result(issue_number, state, logger)
-      logger.info("=== Pipeline interrupted for issue ##{issue_number} ===")
+    def build_interrupted_result(state)
       last_step = state[:completed_steps].any? ? @config.steps[state[:completed_steps].last] : nil
       last_role = last_step ? symbolize(last_step)[:role].to_s : 'startup'
       { success: false, phase: last_role, output: 'Pipeline interrupted', interrupted: true }
@@ -68,35 +88,49 @@ module Ocak
 
     def run_pipeline_steps(issue_number, state, logger:, claude:, chdir:, skip_steps: [])
       @config.steps.each_with_index do |step, idx|
-        if @shutdown_check&.call
-          logger.info('Shutdown requested, stopping pipeline')
-          state[:interrupted] = true
-          break
-        end
+        break if check_shutdown(state, logger)
 
         step = symbolize(step)
         role = step[:role].to_s
+        agent = step[:agent].to_s
 
-        if skip_steps.include?(idx)
-          logger.info("Skipping #{role} (already completed)")
-          next
-        end
+        next if handle_already_completed(idx, role, skip_steps, logger)
 
         reason = skip_reason(step, state)
         if reason
           logger.info("Skipping #{role} \u2014 #{reason}")
-          post_step_comment(issue_number, "\u{23ED}\u{FE0F} **Skipping #{role}** \u2014 #{reason}")
-          state[:steps_skipped] += 1
+          record_skipped_step(issue_number, state, idx, agent, role, reason)
           next
         end
 
         result = execute_step(step, issue_number, state[:last_review_output], logger: logger, claude: claude,
                                                                               chdir: chdir)
+        state[:report].record_step(index: idx, agent: agent, role: role, status: 'completed', result: result)
         ctx = StepContext.new(issue_number, idx, role, result, state, logger, chdir)
         failure = record_step_result(ctx)
         return failure if failure
       end
       nil
+    end
+
+    def check_shutdown(state, logger)
+      return false unless @shutdown_check&.call
+
+      logger.info('Shutdown requested, stopping pipeline')
+      state[:interrupted] = true
+    end
+
+    def handle_already_completed(idx, role, skip_steps, logger)
+      return false unless skip_steps.include?(idx)
+
+      logger.info("Skipping #{role} (already completed)")
+      true
+    end
+
+    def record_skipped_step(issue_number, state, idx, agent, role, reason)
+      post_step_comment(issue_number, "\u{23ED}\u{FE0F} **Skipping #{role}** \u2014 #{reason}")
+      state[:report].record_step(index: idx, agent: agent, role: role, status: 'skipped', skip_reason: reason)
+      state[:steps_skipped] += 1
     end
 
     def execute_step(step, issue_number, review_output, logger:, claude:, chdir:)
@@ -217,6 +251,13 @@ module Ocak
       budget = @config.cost_budget
       budget_str = budget ? " / $#{format('%.2f', budget)} budget" : ''
       logger.info("Pipeline cost: $#{format('%.4f', total_cost)}#{budget_str}")
+    end
+
+    def save_report(report, issue_number, success:, failed_phase: nil)
+      report.finish(success: success, failed_phase: failed_phase)
+      report.save(issue_number, project_dir: @config.project_dir)
+    rescue StandardError
+      nil # report save failures must never crash the pipeline
     end
 
     def pipeline_state
