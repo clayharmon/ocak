@@ -44,6 +44,15 @@ RSpec.describe Ocak::StepComments do
 
       expect(instance.post_step_comment(42, 'hello')).to be_nil
     end
+
+    it 'uses explicit issues: override instead of @issues' do
+      override = instance_double(Ocak::IssueFetcher, comment: nil)
+
+      instance.post_step_comment(42, 'hello', issues: override)
+
+      expect(override).to have_received(:comment).with(42, 'hello')
+      expect(issues).not_to have_received(:comment)
+    end
   end
 
   describe '#post_step_completion_comment' do
@@ -67,6 +76,16 @@ RSpec.describe Ocak::StepComments do
 
       expect(issues).to have_received(:comment)
         .with(42, "\u{274C} **Phase: review** failed \u2014 120s | $0.034")
+    end
+
+    it 'uses explicit issues: override instead of @issues' do
+      override = instance_double(Ocak::IssueFetcher, comment: nil)
+
+      instance.post_step_completion_comment(42, 'implement', success_result, issues: override)
+
+      expect(override).to have_received(:comment)
+        .with(42, "\u{2705} **Phase: implement** completed \u2014 45s | $0.012")
+      expect(issues).not_to have_received(:comment)
     end
 
     it 'handles nil cost_usd and duration_ms' do
