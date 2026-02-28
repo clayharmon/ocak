@@ -12,6 +12,8 @@ RSpec.describe Ocak::ProcessRegistry do
       registry.register(200)
 
       expect(registry.pids).to contain_exactly(100, 200)
+      # Confirms Set is available as a core class (built-in since Ruby 3.2)
+      expect(registry.pids).to be_a(Set)
     end
 
     it 'removes unregistered PIDs' do
