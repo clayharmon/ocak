@@ -492,13 +492,15 @@ RSpec.describe Ocak::PipelineExecutor do
         .with(42, /Phase: fix/)
     end
 
-    it 'does not crash when comment posting fails' do
+    it 'does not crash when comment posting fails and still completes pipeline' do
       allow(issues_fetcher).to receive(:comment).and_raise(StandardError, 'network error')
       allow(claude).to receive(:run_agent).and_return(result_with_cost)
 
       result = executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
 
       expect(result[:success]).to be true
+      expect(claude).to have_received(:run_agent).with('implementer', anything, chdir: anything)
+      expect(claude).to have_received(:run_agent).with('reviewer', anything, chdir: anything)
     end
 
     it 'works without issues fetcher (nil)' do
@@ -768,6 +770,15 @@ RSpec.describe Ocak::PipelineExecutor do
 
     it 'does not crash when sidecar write fails' do
       allow(FileUtils).to receive(:mkdir_p).with(a_string_matching(%r{\.ocak/logs})).and_raise(Errno::EACCES)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude, chdir: dir)
+
+      expect(result[:success]).to be true
+    end
+
+    it 'does not crash when File.write raises' do
+      allow(File).to receive(:write).and_call_original
+      allow(File).to receive(:write).with(a_string_matching(/step-\d+-/), anything).and_raise(Errno::ENOSPC)
 
       result = executor.run_pipeline(42, logger: logger, claude: claude, chdir: dir)
 

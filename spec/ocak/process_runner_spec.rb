@@ -165,10 +165,32 @@ RSpec.describe Ocak::ProcessRunner do
 
       allow(Open3).to receive(:popen3).and_yield(stdin, stdout_r, stderr_r, wait_thr)
 
-      expect { described_class.run(%w[echo ok], chdir: chdir, registry: nil) }.not_to raise_error
+      stdout, stderr, result_status = described_class.run(%w[echo ok], chdir: chdir, registry: nil)
+
+      expect(stdout).to eq("ok\n")
+      expect(stderr).to eq('')
+      expect(result_status).to eq(status)
     ensure
       stdout_r.close unless stdout_r.closed?
       stderr_r.close unless stderr_r.closed?
+    end
+  end
+
+  describe '.kill_process' do
+    it 'warns and returns nil when Process.kill raises Errno::ESRCH' do
+      allow(Process).to receive(:kill).with('TERM', 9999).and_raise(Errno::ESRCH, 'No such process')
+
+      result = nil
+      expect { result = described_class.kill_process(9999) }.to output(/Process already exited/).to_stderr
+      expect(result).to be_nil
+    end
+
+    it 'warns and returns nil when Process.kill raises Errno::EPERM' do
+      allow(Process).to receive(:kill).with('TERM', 9999).and_raise(Errno::EPERM, 'Operation not permitted')
+
+      result = nil
+      expect { result = described_class.kill_process(9999) }.to output(/Process already exited/).to_stderr
+      expect(result).to be_nil
     end
   end
 

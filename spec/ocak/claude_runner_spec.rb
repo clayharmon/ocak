@@ -190,6 +190,37 @@ RSpec.describe Ocak::ClaudeRunner do
     end
   end
 
+  describe '#extract_result_from_stream (private)' do
+    before do
+      agent_dir = File.join(dir, '.claude', 'agents')
+      FileUtils.mkdir_p(agent_dir)
+      File.write(File.join(agent_dir, 'reviewer.md'), '# Reviewer Agent')
+    end
+
+    it 'skips malformed JSON lines and extracts valid result' do
+      stream = [
+        'not json at all',
+        '{"type":"system","subtype":"init"}',
+        '{broken json{{{',
+        JSON.generate(type: 'result', subtype: 'success', result: 'extracted')
+      ].join("\n")
+
+      result = runner.send(:extract_result_from_stream, stream)
+      expect(result).to eq('extracted')
+    end
+
+    it 'returns nil when no result line is present' do
+      stream = [
+        '{"type":"system","subtype":"init"}',
+        'not json',
+        '{"type":"assistant","message":"hello"}'
+      ].join("\n")
+
+      result = runner.send(:extract_result_from_stream, stream)
+      expect(result).to be_nil
+    end
+  end
+
   describe 'retry on transient failures' do
     before do
       agent_dir = File.join(dir, '.claude', 'agents')

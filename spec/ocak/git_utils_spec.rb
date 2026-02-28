@@ -168,12 +168,12 @@ RSpec.describe Ocak::GitUtils do
           .and_return(['', 'error', failure_status])
       end
 
-      it 'does not raise when logger is nil' do
-        expect { described_class.commit_changes(chdir: chdir, message: message) }.not_to raise_error
-      end
+      it 'does not raise when logger is nil and still attempts git commands' do
+        result = described_class.commit_changes(chdir: chdir, message: message)
 
-      it 'returns false on failure' do
-        expect(described_class.commit_changes(chdir: chdir, message: message)).to be false
+        expect(result).to be false
+        expect(Open3).to have_received(:capture3)
+          .with('git', 'add', '-A', chdir: chdir)
       end
     end
   end

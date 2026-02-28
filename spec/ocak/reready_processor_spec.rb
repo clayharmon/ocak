@@ -408,6 +408,67 @@ RSpec.describe Ocak::RereadyProcessor do
       end
     end
 
+    context 'when first verification fails but retry succeeds' do
+      before do
+        allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
+        allow(issues).to receive(:fetch_pr_comments).and_return({ comments: [], reviews: [] })
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title,body')
+          .and_return({ 'title' => 'Fix bug', 'body' => 'desc' })
+
+        # Checkout
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'auto/issue-42-abc123', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'checkout', 'auto/issue-42-abc123', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'pull', '--rebase', 'origin', 'auto/issue-42-abc123', chdir: '/project')
+          .and_return(['', '', success_status])
+
+        allow(claude).to receive(:run_agent).and_return(success_result)
+
+        # First verification fails, second passes
+        test_call_count = 0
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: '/project') do
+            test_call_count += 1
+            test_call_count <= 1 ? ['FAIL', '', failure_status] : ['', '', success_status]
+          end
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rubocop', chdir: '/project')
+          .and_return(['', '', success_status])
+
+        # Push
+        allow(Open3).to receive(:capture3)
+          .with('git', 'status', '--porcelain', chdir: '/project')
+          .and_return(["M file.rb\n", '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'add', '-A', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'commit', '-m', 'fix: address review feedback', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '--force-with-lease', chdir: '/project')
+          .and_return(['', '', success_status])
+
+        allow(issues).to receive(:pr_transition).and_return(true)
+        allow(issues).to receive(:pr_comment).and_return(true)
+      end
+
+      it 'returns true after retry succeeds' do
+        expect(processor.process(pr)).to be true
+      end
+
+      it 'calls implementer twice (initial + retry)' do
+        processor.process(pr)
+
+        expect(claude).to have_received(:run_agent).with('implementer', anything, chdir: '/project').twice
+      end
+    end
+
     context 'when cleanup checkout to main fails' do
       before do
         allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
