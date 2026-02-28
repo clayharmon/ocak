@@ -59,6 +59,17 @@ RSpec.describe Ocak::Verification do
       expect(result[:failures]).to include('bundle exec rspec')
     end
 
+    it 'returns failure when test command has unmatched quotes' do
+      allow(config).to receive(:test_command).and_return("bundle exec 'unclosed")
+      allow(config).to receive(:lint_check_command).and_return(nil)
+
+      result = host.run_final_checks(logger, chdir: chdir)
+
+      expect(result[:success]).to be false
+      expect(result[:failures]).to include("bundle exec 'unclosed")
+      expect(logger).to have_received(:warn).with(/Invalid shell command in config/)
+    end
+
     it 'returns success when no test or lint commands configured' do
       allow(config).to receive(:test_command).and_return(nil)
       allow(config).to receive(:lint_check_command).and_return(nil)
@@ -107,6 +118,19 @@ RSpec.describe Ocak::Verification do
 
       expect(result).to include('bundle exec rubocop')
       expect(result).to include('offenses found')
+    end
+
+    it 'returns error string when lint command has unmatched quotes' do
+      allow(config).to receive(:lint_check_command).and_return("rubocop 'unclosed")
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'diff', '--name-only', 'main', chdir: chdir)
+        .and_return(["lib/foo.rb\n", '', instance_double(Process::Status, success?: true)])
+
+      result = host.run_scoped_lint(logger, chdir: chdir)
+
+      expect(result).to include('ArgumentError')
+      expect(logger).to have_received(:warn).with(/Invalid shell command in config/)
     end
 
     it 'logs and returns nil when no files to lint' do

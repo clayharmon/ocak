@@ -10,7 +10,7 @@ module Ocak
       failures = []
       output_parts = []
 
-      check_tests(failures, output_parts, chdir: chdir)
+      check_tests(failures, output_parts, logger, chdir: chdir)
       check_lint(failures, output_parts, logger, chdir: chdir)
 
       if failures.empty?
@@ -42,6 +42,9 @@ module Ocak
       return nil if status.success?
 
       "=== #{@config.lint_check_command} (#{lintable.size} files) ===\n#{stdout}\n#{stderr}"
+    rescue ArgumentError => e
+      logger&.warn("Invalid shell command in config: #{@config.lint_check_command.inspect} (#{e.message})")
+      "=== #{@config.lint_check_command} ===\nArgumentError: #{e.message}"
     end
 
     def lint_extensions_for(language)
@@ -60,7 +63,7 @@ module Ocak
 
     private
 
-    def check_tests(failures, output_parts, chdir:)
+    def check_tests(failures, output_parts, logger, chdir:)
       return unless @config.test_command
 
       stdout, stderr, status = Open3.capture3(*Shellwords.shellsplit(@config.test_command), chdir: chdir)
@@ -68,6 +71,9 @@ module Ocak
 
       failures << @config.test_command
       output_parts << "=== #{@config.test_command} ===\n#{stdout}\n#{stderr}"
+    rescue ArgumentError => e
+      logger&.warn("Invalid shell command in config: #{@config.test_command.inspect} (#{e.message})")
+      failures << @config.test_command
     end
 
     def check_lint(failures, output_parts, logger, chdir:)

@@ -101,6 +101,9 @@ module Ocak
 
       _, _, status = Open3.capture3(*Shellwords.shellsplit(cmd), chdir: @config.project_dir)
       status.success?
+    rescue ArgumentError => e
+      @logger&.warn("Invalid shell command in config: #{cmd.inspect} (#{e.message})")
+      false
     end
 
     def handle_result(pr_number, success)
