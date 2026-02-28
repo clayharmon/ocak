@@ -151,6 +151,44 @@ RSpec.describe Ocak::Commands::Resume do
     end
   end
 
+  context 'when branch name is unsafe' do
+    let(:saved_state_bad_branch) do
+      {
+        completed_steps: [0],
+        worktree_path: '/project/.claude/worktrees/issue-42',
+        branch: '--upload-pack=/tmp/evil',
+        issue_number: 42
+      }
+    end
+
+    before do
+      allow(pipeline_state).to receive(:load).with(42).and_return(saved_state_bad_branch)
+      allow(Dir).to receive(:exist?).with('/project/.claude/worktrees/issue-42').and_return(false)
+    end
+
+    it 'exits with error' do
+      expect { command.call(issue: '42') }.to raise_error(SystemExit)
+    end
+
+    it 'warns about the unsafe branch name' do
+      expect { command.call(issue: '42') }.to raise_error(SystemExit).and output(
+        /Unsafe branch name/
+      ).to_stderr
+    end
+
+    it 'does not call git rev-parse' do
+      allow(Open3).to receive(:capture3)
+      begin
+        command.call(issue: '42')
+      rescue SystemExit
+        # expected
+      end
+
+      expect(Open3).not_to have_received(:capture3)
+        .with('git', 'rev-parse', '--verify', anything, anything)
+    end
+  end
+
   it 'exits with error on ConfigNotFound' do
     allow(Ocak::Config).to receive(:load).and_raise(Ocak::Config::ConfigNotFound, 'not found')
 

@@ -25,8 +25,14 @@ module Ocak
       feedback = gather_feedback(pr_number, issue_number)
       return false unless feedback
 
-      unless checkout_pr_branch(pull_request['headRefName'])
-        @logger.error("PR ##{pr_number}: failed to checkout branch #{pull_request['headRefName']}")
+      branch_name = pull_request['headRefName']
+      unless GitUtils.safe_branch_name?(branch_name)
+        @logger.error("PR ##{pr_number}: unsafe branch name '#{branch_name}'")
+        return false
+      end
+
+      unless checkout_pr_branch(branch_name)
+        @logger.error("PR ##{pr_number}: failed to checkout branch #{branch_name}")
         cleanup
         return false
       end

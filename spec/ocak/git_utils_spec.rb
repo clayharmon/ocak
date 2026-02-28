@@ -9,6 +9,38 @@ RSpec.describe Ocak::GitUtils do
   let(:chdir) { '/project' }
   let(:message) { 'chore: test commit' }
 
+  describe '.safe_branch_name?' do
+    it 'accepts valid branch names' do
+      %w[main feature/add-login auto/issue-42-abc123 fix_bug v1.0.0].each do |name|
+        expect(described_class.safe_branch_name?(name)).to be(true), "expected '#{name}' to be safe"
+      end
+    end
+
+    it 'rejects names starting with a hyphen' do
+      expect(described_class.safe_branch_name?('--upload-pack=/tmp/evil')).to be false
+      expect(described_class.safe_branch_name?('-flag')).to be false
+    end
+
+    it 'rejects names containing ..' do
+      expect(described_class.safe_branch_name?('main..feature')).to be false
+      expect(described_class.safe_branch_name?('a/../b')).to be false
+    end
+
+    it 'rejects nil' do
+      expect(described_class.safe_branch_name?(nil)).to be false
+    end
+
+    it 'rejects empty string' do
+      expect(described_class.safe_branch_name?('')).to be false
+    end
+
+    it 'rejects names with spaces or special characters' do
+      expect(described_class.safe_branch_name?('branch name')).to be false
+      expect(described_class.safe_branch_name?('branch;rm -rf')).to be false
+      expect(described_class.safe_branch_name?('branch$(cmd)')).to be false
+    end
+  end
+
   describe '.commit_changes' do
     context 'when there are no changes (empty porcelain)' do
       before do

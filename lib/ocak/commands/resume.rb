@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative '../config'
+require_relative '../git_utils'
 require_relative '../pipeline_runner'
 require_relative '../pipeline_state'
 require_relative '../claude_runner'
@@ -127,6 +128,11 @@ module Ocak
       def recreate_from_branch(config, saved)
         unless saved[:branch]
           warn 'Worktree no longer exists and no branch saved. Cannot resume.'
+          exit 1
+        end
+
+        unless GitUtils.safe_branch_name?(saved[:branch])
+          warn "Unsafe branch name '#{saved[:branch]}'. Cannot resume."
           exit 1
         end
 

@@ -4,6 +4,15 @@ require 'open3'
 
 module Ocak
   module GitUtils
+    # Validates that a branch name is safe to pass to git commands.
+    # Rejects names that could be interpreted as flags (starting with -)
+    # or cause unexpected git behavior (containing ..).
+    def self.safe_branch_name?(name)
+      return false if name.nil? || name.empty?
+
+      name.match?(%r{\A[a-zA-Z0-9_./-]+\z}) && !name.start_with?('-') && !name.include?('..')
+    end
+
     # Stages and commits all changes in the given directory.
     # Returns true if changes were committed, false if no changes or on failure.
     # Logs warnings via logger on failure rather than raising.
