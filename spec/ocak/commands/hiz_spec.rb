@@ -14,12 +14,13 @@ RSpec.describe Ocak::Commands::Hiz do
                     test_command: nil,
                     lint_command: nil,
                     lint_check_command: nil,
+                    label_failed: 'pipeline-failed',
                     language: 'ruby')
   end
 
   let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, log_file_path: nil) }
   let(:claude) { instance_double(Ocak::ClaudeRunner) }
-  let(:issues) { instance_double(Ocak::IssueFetcher, comment: nil, view: nil) }
+  let(:issues) { instance_double(Ocak::IssueFetcher, comment: nil, view: nil, transition: nil) }
   let(:success_result) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Done') }
   let(:failure_result) { Ocak::ClaudeRunner::AgentResult.new(success: false, output: 'Error') }
   let(:success_status) { instance_double(Process::Status, success?: true) }
@@ -515,7 +516,14 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(issues).to have_received(:comment)
-        .with(42, match(/failed at phase: create-branch/))
+        .with(42, match(/failed at phase: create-branch/)).exactly(:once)
+    end
+
+    it 'transitions label to failed' do
+      command.call(issue: '42')
+
+      expect(issues).to have_received(:transition)
+        .with(42, from: nil, to: 'pipeline-failed')
     end
 
     it 'checks out main to restore clean state' do
@@ -529,7 +537,7 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(issues).to have_received(:comment)
-        .with(42, /Pipeline failed.*at phase: create-branch/)
+        .with(42, /Pipeline failed.*at phase: create-branch/).exactly(:once)
     end
 
     it 'does not run any agents' do

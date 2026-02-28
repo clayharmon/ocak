@@ -256,6 +256,7 @@ module Ocak
 
       def handle_failure(issue_number, phase, output, issues:, logger:)
         logger.error("Issue ##{issue_number} failed at phase: #{phase}")
+        issues.transition(issue_number, from: nil, to: @config.label_failed)
         issues.comment(issue_number,
                        "Hiz (fast mode) failed at phase: #{phase}\n\n```\n#{output.to_s[0..1000]}\n```")
         warn "Issue ##{issue_number} failed at phase: #{phase}"
