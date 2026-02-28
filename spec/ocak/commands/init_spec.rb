@@ -97,6 +97,19 @@ RSpec.describe Ocak::Commands::Init do
     expect(settings['permissions']['allow']).to include('Bash(bundle exec rspec*)')
   end
 
+  it 'recovers from malformed settings.json with a warning' do
+    settings_dir = File.join(dir, '.claude')
+    FileUtils.mkdir_p(settings_dir)
+    File.write(File.join(settings_dir, 'settings.json'), '{invalid json!!!}')
+
+    expect { command.call }.to output(
+      %r{Warning: .claude/settings.json is not valid JSON, creating fresh.*Ocak initialized}m
+    ).to_stdout
+
+    settings = JSON.parse(File.read(File.join(settings_dir, 'settings.json')))
+    expect(settings['permissions']['allow']).to include('Bash(bundle exec rspec*)')
+  end
+
   it 'updates .gitignore' do
     command.call
 

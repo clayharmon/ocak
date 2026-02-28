@@ -85,7 +85,12 @@ module Ocak
 
       def update_settings(project_dir, stack)
         settings_path = File.join(project_dir, '.claude', 'settings.json')
-        existing = File.exist?(settings_path) ? JSON.parse(File.read(settings_path)) : {}
+        existing = begin
+          File.exist?(settings_path) ? JSON.parse(File.read(settings_path)) : {}
+        rescue JSON::ParserError
+          puts '  Warning: .claude/settings.json is not valid JSON, creating fresh'
+          {}
+        end
 
         merge_permissions(existing, stack)
         merge_hooks(existing)
