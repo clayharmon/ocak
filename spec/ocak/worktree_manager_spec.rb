@@ -110,4 +110,106 @@ RSpec.describe Ocak::WorktreeManager do
       expect(manager.list).to eq([])
     end
   end
+
+  describe '#prune' do
+    it 'calls git worktree prune with the correct chdir' do
+      expect(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'prune', chdir: '/project')
+        .and_return(['', '', instance_double(Process::Status, success?: true)])
+
+      manager.prune
+    end
+  end
+
+  describe '#clean_stale' do
+    let(:success_status) { instance_double(Process::Status, success?: true) }
+
+    let(:porcelain_output) do
+      <<~OUTPUT
+        worktree /project
+        branch refs/heads/main
+
+        worktree /project/.claude/worktrees/issue-42
+        branch refs/heads/auto/issue-42-abc123
+
+        worktree /project/.claude/worktrees/issue-43
+        branch refs/heads/auto/issue-43-def456
+
+      OUTPUT
+    end
+
+    it 'removes worktrees under the worktree base and returns their paths' do
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'list', '--porcelain', chdir: '/project')
+        .and_return([porcelain_output, '', success_status])
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'remove', '--force', anything, chdir: '/project')
+        .and_return(['', '', success_status])
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'prune', chdir: '/project')
+        .and_return(['', '', success_status])
+
+      removed = manager.clean_stale
+
+      expect(removed).to contain_exactly(
+        '/project/.claude/worktrees/issue-42',
+        '/project/.claude/worktrees/issue-43'
+      )
+    end
+
+    it 'skips worktrees outside the worktree base' do
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'list', '--porcelain', chdir: '/project')
+        .and_return([porcelain_output, '', success_status])
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'remove', '--force', anything, chdir: '/project')
+        .and_return(['', '', success_status])
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'prune', chdir: '/project')
+        .and_return(['', '', success_status])
+
+      manager.clean_stale
+
+      expect(Open3).not_to have_received(:capture3)
+        .with('git', 'worktree', 'remove', '--force', '/project', chdir: '/project')
+    end
+
+    it 'returns empty array when no worktrees exist' do
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'list', '--porcelain', chdir: '/project')
+        .and_return(['', '', instance_double(Process::Status, success?: false)])
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'prune', chdir: '/project')
+        .and_return(['', '', success_status])
+
+      expect(manager.clean_stale).to eq([])
+    end
+
+    it 'continues removing other worktrees when one fails' do
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'list', '--porcelain', chdir: '/project')
+        .and_return([porcelain_output, '', success_status])
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'remove', '--force', '/project/.claude/worktrees/issue-42', chdir: '/project')
+        .and_raise(Errno::ENOENT, 'No such file or directory')
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'remove', '--force', '/project/.claude/worktrees/issue-43', chdir: '/project')
+        .and_return(['', '', success_status])
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'prune', chdir: '/project')
+        .and_return(['', '', success_status])
+
+      removed = manager.clean_stale
+
+      expect(removed).to eq(['/project/.claude/worktrees/issue-43'])
+    end
+  end
 end

@@ -53,8 +53,12 @@ module Ocak
       list.each do |wt|
         next unless wt[:path]&.include?(@worktree_base)
 
-        git('worktree', 'remove', '--force', wt[:path])
-        removed << wt[:path]
+        begin
+          git('worktree', 'remove', '--force', wt[:path])
+          removed << wt[:path]
+        rescue StandardError
+          next # skip failed removal so one bad worktree doesn't abort cleanup of others
+        end
       end
       prune
       removed
