@@ -111,6 +111,48 @@ Write tests for every acceptance criterion in the issue:
 2. **Edge cases** — boundary values, empty inputs, maximum values
 3. **Error cases** — invalid input, missing data, unauthorized access
 
+## Commit Workflow
+
+Make **atomic conventional commits** as you work. Each commit should represent one logical unit of change. Include tests in the same commit as the code they test.
+
+### Conventional Commit Format
+
+```
+<type>(<scope>): <short description>
+```
+
+Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `style`
+Scope: the area affected (e.g., a module name, feature area, or directory)
+
+### When to Commit
+
+Commit after each logical unit passes lint/tests. Typical sequence:
+
+1. **Core logic** — new module/class + its tests → `feat(auth): add token refresh service`
+2. **Integration layer** — controller/route/command + tests → `feat(auth): expose refresh endpoint`
+3. **Frontend/UI** — component + route + tests → `feat(frontend): add token refresh UI`
+4. **Lint/format fixes** — if needed after a commit → `style(auth): fix lint violations`
+
+Combine related changes: a class and its tests go in one commit, not two.
+
+### How to Commit
+
+1. Stage only the files relevant to the logical unit (use specific file paths, not `git add -A`)
+2. Run lint/tests for the staged changes before committing
+3. Commit with a conventional message:
+   ```bash
+   git commit -m "feat(scope): description"
+   ```
+4. Move on to the next logical unit
+
+### Rules
+
+- Never use `git add -A` or `git add .` — stage specific files
+- Never commit files with secrets (.env, credentials)
+- Do NOT amend previous commits — always create new ones
+- If a lint fix is needed for already-committed code, make a separate `style` commit
+- Keep commits small and reviewable — if a commit touches 10+ files across unrelated areas, split it
+
 ## Verification Checklist
 
 After implementation, run these commands and fix ALL failures before finishing:

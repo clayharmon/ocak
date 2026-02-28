@@ -127,6 +127,48 @@ Write tests for every acceptance criterion in the issue. Specs mirror `lib/` str
 3. **Error cases** — invalid input, failed external commands, missing dependencies
 4. **Custom exceptions** — verify the right error class and message are raised
 
+## Commit Workflow
+
+Make **atomic conventional commits** as you work. Each commit should represent one logical unit of change. Include tests in the same commit as the code they test.
+
+### Conventional Commit Format
+
+```
+<type>(<scope>): <short description>
+```
+
+Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `style`
+Scope: the area affected (e.g., `pipeline`, `cli`, `config`, `merge`, `agents`)
+
+### When to Commit
+
+Commit after each logical unit passes lint/tests. Typical sequence:
+
+1. **Core logic** — new class/module + its spec → `feat(pipeline): add batch planner`
+2. **CLI integration** — command class + registration + spec → `feat(cli): add batch command`
+3. **Template/config changes** — template + related updates → `feat(agents): add commit instructions to implementer template`
+4. **Lint/format fixes** — if lint fixes are needed after a commit → `style(pipeline): fix rubocop violations`
+
+Combine related changes: a class and its spec go in one commit, not two.
+
+### How to Commit
+
+1. Stage only the files relevant to the logical unit (use specific file paths, not `git add -A`)
+2. Run lint/tests for the staged changes before committing
+3. Commit with a conventional message:
+   ```bash
+   git commit -m "feat(scope): description"
+   ```
+4. Move on to the next logical unit
+
+### Rules
+
+- Never use `git add -A` or `git add .` — stage specific files
+- Never commit files with secrets (.env, credentials)
+- Do NOT amend previous commits — always create new ones
+- If a lint fix is needed for already-committed code, make a separate `style` commit
+- Keep commits small and reviewable — if a commit touches 10+ files across unrelated areas, split it
+
 ## Verification Checklist
 
 After implementation, run these commands and fix ALL failures before finishing:
