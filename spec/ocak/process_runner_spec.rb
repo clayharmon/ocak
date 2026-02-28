@@ -105,6 +105,27 @@ RSpec.describe Ocak::ProcessRunner do
       stderr_r.close unless stderr_r.closed?
     end
 
+    it 'completes without raising when Process.kill raises Errno::EPERM' do
+      stdin = instance_double(IO, close: nil)
+      stdout_r, stdout_w = IO.pipe
+      stderr_r, stderr_w = IO.pipe
+      stderr_w.close
+      wait_thr = double('wait_thr', pid: 99_999)
+      status = instance_double(Process::Status, success?: false)
+      allow(wait_thr).to receive(:value).and_return(status)
+
+      allow(Open3).to receive(:popen3).and_yield(stdin, stdout_r, stderr_r, wait_thr)
+      allow(Process).to receive(:kill).and_raise(Errno::EPERM, 'Operation not permitted')
+      allow(described_class).to receive(:sleep)
+      allow(Process).to receive(:clock_gettime).and_return(100.0, 100.0, 101.0)
+
+      expect { described_class.run(['slow'], chdir: chdir, timeout: 0) }.not_to raise_error
+    ensure
+      stdout_r.close unless stdout_r.closed?
+      stdout_w.close unless stdout_w.closed?
+      stderr_r.close unless stderr_r.closed?
+    end
+
     it 'registers PID with registry after spawn and unregisters after exit' do
       stdin = instance_double(IO, close: nil)
       stdout_r, stdout_w = IO.pipe

@@ -56,7 +56,7 @@ module Ocak
       Process.kill('TERM', pid)
       sleep 2
       Process.kill('KILL', pid)
-    rescue Errno::ESRCH => e
+    rescue Errno::ESRCH, Errno::EPERM => e
       warn("Process already exited during kill: #{e.message}")
       nil
     end
