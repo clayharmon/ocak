@@ -7,12 +7,16 @@ require_relative '../claude_runner'
 require_relative '../git_utils'
 require_relative '../issue_fetcher'
 require_relative '../verification'
+require_relative '../planner'
+require_relative '../step_comments'
 require_relative '../logger'
 
 module Ocak
   module Commands
     class Hiz < Dry::CLI::Command
       include Verification
+      include Planner
+      include StepComments
 
       desc 'Fast-mode: implement an issue with Sonnet, create a PR (no merge)'
 
@@ -153,19 +157,10 @@ module Ocak
         model = STEP_MODELS[agent]
         logger.info("--- Phase: #{role} (#{agent}) [#{model}] ---")
         post_step_comment(issue_number, "\u{1F504} **Phase: #{role}** (#{agent})")
-        prompt = build_prompt(role, issue_number)
+        prompt = build_step_prompt(role, issue_number, nil)
         result = claude.run_agent(agent, prompt, chdir: chdir, model: model)
         post_step_completion_comment(issue_number, role, result)
         result
-      end
-
-      def build_prompt(role, issue_number)
-        case role
-        when 'implement' then "Implement GitHub issue ##{issue_number}"
-        when 'review'    then "Review the changes for GitHub issue ##{issue_number}. Run: git diff main"
-        when 'security'  then "Security review changes for GitHub issue ##{issue_number}. Run: git diff main"
-        else "Run #{role} for GitHub issue ##{issue_number}"
-        end
       end
 
       def run_final_verification_step(issue_number, claude:, logger:, chdir:)
@@ -258,22 +253,6 @@ module Ocak
 
       def build_logger(issue_number)
         PipelineLogger.new(log_dir: File.join(@config.project_dir, @config.log_dir), issue_number: issue_number)
-      end
-
-      def post_step_comment(issue_number, body)
-        @issues&.comment(issue_number, body)
-      rescue StandardError
-        nil
-      end
-
-      def post_step_completion_comment(issue_number, role, result)
-        duration = (result.duration_ms.to_f / 1000).round
-        cost = format('%.3f', result.cost_usd.to_f)
-        if result.success?
-          post_step_comment(issue_number, "\u{2705} **Phase: #{role}** completed \u2014 #{duration}s | $#{cost}")
-        else
-          post_step_comment(issue_number, "\u{274C} **Phase: #{role}** failed \u2014 #{duration}s | $#{cost}")
-        end
       end
 
       def post_hiz_start_comment(issue_number)
