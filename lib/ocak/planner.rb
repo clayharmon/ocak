@@ -17,7 +17,7 @@ module Ocak
 
     def build_step_prompt(role, issue_number, review_output)
       if role == 'fix'
-        "Fix these review findings for issue ##{issue_number}:\n\n#{review_output}"
+        "Fix these review findings for issue ##{issue_number}:\n\n<review_output>\n#{review_output}\n</review_output>"
       elsif STEP_PROMPTS.key?(role)
         format(STEP_PROMPTS[role], issue: issue_number)
       else

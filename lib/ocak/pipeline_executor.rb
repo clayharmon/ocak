@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'open3'
+require 'fileutils'
 require_relative 'pipeline_state'
 require_relative 'verification'
 require_relative 'planner'
@@ -113,6 +114,7 @@ module Ocak
       ctx.state[:steps_run] += 1
       ctx.state[:total_cost] += ctx.result.cost_usd.to_f
       save_step_progress(ctx)
+      write_step_output(ctx.issue_number, ctx.idx, ctx.role, ctx.result.output)
       post_step_completion_comment(ctx)
 
       check_step_failure(ctx) || check_cost_budget(ctx.state, ctx.logger)
@@ -123,6 +125,17 @@ module Ocak
                           completed_steps: ctx.state[:completed_steps],
                           worktree_path: ctx.chdir,
                           branch: current_branch(ctx.chdir))
+    end
+
+    def write_step_output(issue_number, idx, agent, output)
+      return if output.to_s.empty?
+
+      safe_agent = agent.to_s.gsub(/[^a-zA-Z0-9_-]/, '')
+      dir = File.join(@config.project_dir, '.ocak', 'logs', "issue-#{issue_number}")
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "step-#{idx}-#{safe_agent}.md"), output)
+    rescue StandardError
+      nil # sidecar write failures must never crash the pipeline
     end
 
     def check_step_failure(ctx)
@@ -182,9 +195,9 @@ module Ocak
       unless result[:success]
         logger.warn('Final checks failed, attempting fix...')
         post_step_comment(issue_number, "\u{26A0}\u{FE0F} **Final verification failed** \u2014 attempting auto-fix...")
-        claude.run_agent('implementer',
-                         "Fix these test/lint failures:\n\n#{result[:output]}",
-                         chdir: chdir)
+        fix_prompt = "Fix these test/lint failures:\n\n" \
+                     "<verification_output>\n#{result[:output]}\n</verification_output>"
+        claude.run_agent('implementer', fix_prompt, chdir: chdir)
         result = run_final_checks(logger, chdir: chdir)
       end
 

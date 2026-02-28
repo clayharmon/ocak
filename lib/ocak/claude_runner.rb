@@ -119,7 +119,8 @@ module Ocak
     end
 
     def build_agent_result(parser, status, stderr, agent_name)
-      output = parser.result_text || ''
+      full = parser.full_output
+      output = full.empty? ? (parser.result_text || '') : full
       exit_ok = status.respond_to?(:success?) && status.success?
       success = parser.success? && exit_ok
 

@@ -383,6 +383,20 @@ RSpec.describe Ocak::PipelineExecutor do
       expect(result[:success]).to be false
       expect(result[:phase]).to eq('final-verify')
     end
+
+    it 'wraps failure output in XML tags when calling implementer for fix' do
+      allow(config).to receive(:test_command).and_return('bundle exec rspec')
+      allow(config).to receive(:lint_check_command).and_return(nil)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(Open3).to receive(:capture3)
+        .with('bundle', 'exec', 'rspec', chdir: '/project')
+        .and_return(['test failures here', '', instance_double(Process::Status, success?: false)])
+
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(claude).to have_received(:run_agent)
+        .with('implementer', %r{<verification_output>.*</verification_output>}m, chdir: '/project')
+    end
   end
 
   describe 'progress comments' do
@@ -649,6 +663,71 @@ RSpec.describe Ocak::PipelineExecutor do
       allow(claude).to receive(:run_agent).and_return(success_result)
 
       result = executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(result[:success]).to be true
+    end
+  end
+
+  describe 'sidecar output files' do
+    let(:dir) { Dir.mktmpdir }
+
+    before do
+      allow(config).to receive(:project_dir).and_return(dir)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(FileUtils).to receive(:mkdir_p).and_call_original
+    end
+
+    after { FileUtils.remove_entry(dir) }
+
+    it 'writes sidecar file after each step' do
+      executor.run_pipeline(42, logger: logger, claude: claude, chdir: dir)
+
+      sidecar = File.join(dir, '.ocak', 'logs', 'issue-42', 'step-0-implement.md')
+      expect(File.exist?(sidecar)).to be true
+      expect(File.read(sidecar)).to eq('Done')
+    end
+
+    it 'creates the sidecar directory if missing' do
+      executor.run_pipeline(42, logger: logger, claude: claude, chdir: dir)
+
+      sidecar_dir = File.join(dir, '.ocak', 'logs', 'issue-42')
+      expect(Dir.exist?(sidecar_dir)).to be true
+    end
+
+    it 'follows naming convention step-{index}-{role}.md' do
+      executor.run_pipeline(42, logger: logger, claude: claude, chdir: dir)
+
+      expect(File.exist?(File.join(dir, '.ocak', 'logs', 'issue-42', 'step-0-implement.md'))).to be true
+      expect(File.exist?(File.join(dir, '.ocak', 'logs', 'issue-42', 'step-1-review.md'))).to be true
+    end
+
+    it 'does not write sidecar file when output is empty' do
+      empty_result = Ocak::ClaudeRunner::AgentResult.new(success: true, output: '')
+      allow(claude).to receive(:run_agent).and_return(empty_result)
+
+      executor.run_pipeline(42, logger: logger, claude: claude, chdir: dir)
+
+      sidecar = File.join(dir, '.ocak', 'logs', 'issue-42', 'step-0-implement.md')
+      expect(File.exist?(sidecar)).to be false
+    end
+
+    it 'sanitizes role name to prevent path traversal in sidecar filename' do
+      traversal_steps = [
+        { 'agent' => 'implementer', 'role' => '../../etc/evil' }
+      ]
+      allow(config).to receive(:steps).and_return(traversal_steps)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      executor.run_pipeline(42, logger: logger, claude: claude, chdir: dir)
+
+      safe_sidecar = File.join(dir, '.ocak', 'logs', 'issue-42', 'step-0-etcevil.md')
+      expect(File.exist?(safe_sidecar)).to be true
+    end
+
+    it 'does not crash when sidecar write fails' do
+      allow(FileUtils).to receive(:mkdir_p).with(a_string_matching(%r{\.ocak/logs})).and_raise(Errno::EACCES)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude, chdir: dir)
 
       expect(result[:success]).to be true
     end

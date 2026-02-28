@@ -81,7 +81,7 @@ RSpec.describe Ocak::StreamParser do
         expect(events.first).to include(has_findings: true, has_green: true)
       end
 
-      it 'truncates text to 200 chars' do
+      it 'truncates text to 200 chars in event hash' do
         long_text = 'x' * 300
         line = JSON.generate(type: 'assistant', message: {
                                content: [{ 'type' => 'text', 'text' => long_text }]
@@ -89,6 +89,16 @@ RSpec.describe Ocak::StreamParser do
         events = parser.parse_line(line)
 
         expect(events.first[:text].length).to eq(201) # 0..200
+      end
+
+      it 'accumulates full text in full_output without truncation' do
+        long_text = 'x' * 300
+        line = JSON.generate(type: 'assistant', message: {
+                               content: [{ 'type' => 'text', 'text' => long_text }]
+                             })
+        parser.parse_line(line)
+
+        expect(parser.full_output).to eq(long_text)
       end
 
       it 'returns empty for non-array content' do
@@ -239,6 +249,88 @@ RSpec.describe Ocak::StreamParser do
   describe '#success?' do
     it 'defaults to false' do
       expect(parser.success?).to be false
+    end
+  end
+
+  describe '#full_output' do
+    it 'returns empty string when no text blocks parsed' do
+      expect(parser.full_output).to eq('')
+    end
+
+    it 'accumulates multiple text blocks joined with newlines' do
+      %w[first second third].each do |text|
+        line = JSON.generate(type: 'assistant', message: {
+                               content: [{ 'type' => 'text', 'text' => text }]
+                             })
+        parser.parse_line(line)
+      end
+
+      expect(parser.full_output).to eq("first\nsecond\nthird")
+    end
+
+    it 'preserves full text without truncation' do
+      long_text = 'a' * 500
+      line = JSON.generate(type: 'assistant', message: {
+                             content: [{ 'type' => 'text', 'text' => long_text }]
+                           })
+      parser.parse_line(line)
+
+      expect(parser.full_output.length).to eq(500)
+    end
+
+    it 'is independent from result_text' do
+      text_line = JSON.generate(type: 'assistant', message: {
+                                  content: [{ 'type' => 'text', 'text' => 'intermediate text' }]
+                                })
+      result_line = JSON.generate(type: 'result', subtype: 'success', result: 'final result',
+                                  total_cost_usd: 0.01, duration_ms: 1000, num_turns: 1)
+      parser.parse_line(text_line)
+      parser.parse_line(result_line)
+
+      expect(parser.full_output).to eq('intermediate text')
+      expect(parser.result_text).to eq('final result')
+    end
+  end
+
+  describe 'debug logging for read-only tools' do
+    it 'logs Read tool calls via logger.debug' do
+      line = JSON.generate(type: 'assistant', message: {
+                             content: [{ 'type' => 'tool_use', 'id' => 'r1', 'name' => 'Read',
+                                         'input' => { 'file_path' => '/foo/bar.rb' } }]
+                           })
+      parser.parse_line(line)
+
+      expect(logger).to have_received(:debug).with('[READ] /foo/bar.rb', agent: 'reviewer')
+    end
+
+    it 'logs Glob tool calls via logger.debug' do
+      line = JSON.generate(type: 'assistant', message: {
+                             content: [{ 'type' => 'tool_use', 'id' => 'g1', 'name' => 'Glob',
+                                         'input' => { 'pattern' => '**/*.rb' } }]
+                           })
+      parser.parse_line(line)
+
+      expect(logger).to have_received(:debug).with('[GLOB] **/*.rb', agent: 'reviewer')
+    end
+
+    it 'logs Grep tool calls via logger.debug' do
+      line = JSON.generate(type: 'assistant', message: {
+                             content: [{ 'type' => 'tool_use', 'id' => 'gr1', 'name' => 'Grep',
+                                         'input' => { 'pattern' => 'def poll_interval' } }]
+                           })
+      parser.parse_line(line)
+
+      expect(logger).to have_received(:debug).with('[GREP] def poll_interval', agent: 'reviewer')
+    end
+
+    it 'does not log unknown tools via debug' do
+      line = JSON.generate(type: 'assistant', message: {
+                             content: [{ 'type' => 'tool_use', 'id' => 'u1', 'name' => 'WebSearch',
+                                         'input' => {} }]
+                           })
+      parser.parse_line(line)
+
+      expect(logger).not_to have_received(:debug)
     end
   end
 
