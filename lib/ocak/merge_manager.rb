@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
-require 'json'
 require 'open3'
 require 'shellwords'
 
 module Ocak
   class MergeManager
-    def initialize(config:, claude:, logger:, watch: nil)
+    def initialize(config:, claude:, logger:, issues:, watch: nil)
       @config = config
       @claude = claude
       @logger = logger
+      @issues = issues
       @watch = watch
     end
 
@@ -93,15 +93,8 @@ module Ocak
     end
 
     def fetch_issue_title(issue_number)
-      stdout, _, status = Open3.capture3('gh', 'issue', 'view', issue_number.to_s,
-                                         '--json', 'title',
-                                         chdir: @config.project_dir)
-      return "Issue #{issue_number}" unless status.success?
-
-      data = JSON.parse(stdout)
-      data['title'] || "Issue #{issue_number}"
-    rescue JSON::ParserError
-      "Issue #{issue_number}"
+      data = @issues.view(issue_number, fields: 'title')
+      data&.dig('title') || "Issue #{issue_number}"
     end
 
     def extract_pr_number(gh_output)

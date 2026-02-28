@@ -17,6 +17,10 @@ RSpec.describe Ocak::MergeManager do
     instance_double(Ocak::ClaudeRunner)
   end
 
+  let(:issues) do
+    instance_double(Ocak::IssueFetcher)
+  end
+
   let(:worktree) do
     Ocak::WorktreeManager::Worktree.new(
       path: '/project/.claude/worktrees/issue-42',
@@ -25,7 +29,7 @@ RSpec.describe Ocak::MergeManager do
     )
   end
 
-  subject(:manager) { described_class.new(config: config, claude: claude, logger: logger) }
+  subject(:manager) { described_class.new(config: config, claude: claude, logger: logger, issues: issues) }
 
   describe '#merge' do
     let(:success_status) { instance_double(Process::Status, success?: true) }
@@ -265,9 +269,9 @@ RSpec.describe Ocak::MergeManager do
         allow(Open3).to receive(:capture3)
           .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)
           .and_return(['', '', success_status])
-        allow(Open3).to receive(:capture3)
-          .with('gh', 'issue', 'view', '42', '--json', 'title', chdir: '/project')
-          .and_return([JSON.generate({ 'title' => 'Fix the bug' }), '', success_status])
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title')
+          .and_return({ 'title' => 'Fix the bug' })
         allow(Open3).to receive(:capture3)
           .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
                 '--head', worktree.branch, chdir: worktree.path)
@@ -350,9 +354,9 @@ RSpec.describe Ocak::MergeManager do
         allow(Open3).to receive(:capture3)
           .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)
           .and_return(['', '', success_status])
-        allow(Open3).to receive(:capture3)
-          .with('gh', 'issue', 'view', '42', '--json', 'title', chdir: '/project')
-          .and_return([JSON.generate({ 'title' => 'Fix the bug' }), '', success_status])
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title')
+          .and_return({ 'title' => 'Fix the bug' })
         allow(Open3).to receive(:capture3)
           .with('gh', 'pr', 'create', any_args, chdir: worktree.path)
           .and_return(['', 'error', failure_status])
