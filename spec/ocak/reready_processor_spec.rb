@@ -72,6 +72,33 @@ RSpec.describe Ocak::RereadyProcessor do
       end
     end
 
+    context 'when branch name is unsafe' do
+      let(:pr_bad_branch) do
+        { 'number' => 10, 'title' => 'Fix #42', 'body' => 'Closes #42',
+          'headRefName' => '--upload-pack=/tmp/evil', 'labels' => [] }
+      end
+
+      before do
+        allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
+        allow(issues).to receive(:fetch_pr_comments).and_return({ comments: [], reviews: [] })
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title,body')
+          .and_return({ 'title' => 'Fix bug', 'body' => 'desc' })
+      end
+
+      it 'returns false and logs an error' do
+        expect(processor.process(pr_bad_branch)).to be false
+        expect(logger).to have_received(:error).with(/unsafe branch name/)
+      end
+
+      it 'does not call git fetch' do
+        processor.process(pr_bad_branch)
+
+        expect(Open3).not_to have_received(:capture3)
+          .with('git', 'fetch', anything, anything, anything)
+      end
+    end
+
     context 'when branch checkout fails' do
       before do
         allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
