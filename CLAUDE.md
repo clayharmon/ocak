@@ -18,6 +18,7 @@ lib/ocak/
 ├── issue_fetcher.rb       # GitHub CLI wrapper for all issue data access — listing, labeling, commenting, label creation, view
 ├── worktree_manager.rb    # Git worktree create/remove/list/clean
 ├── merge_manager.rb       # Sequential rebase + test + push, then delegates to merger agent
+├── merge_orchestration.rb # MergeOrchestration module (included by PipelineRunner) — PR creation, audit blocking, manual review, label transitions
 ├── git_utils.rb           # Shared git helpers — commit_changes (porcelain check → add -A → commit with exit-status checks), safe_branch_name? (validates branch names against flag injection and .. traversal)
 ├── planner.rb             # Batch planning: groups issues for parallel/sequential execution
 ├── pipeline_state.rb      # Persists per-issue pipeline progress for resume support
