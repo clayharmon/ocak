@@ -410,6 +410,57 @@ RSpec.describe Ocak::IssueFetcher do
     end
   end
 
+  describe '#current_user (private)' do
+    it 'returns the login on success' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'api', 'user', '--jq', '.login')
+        .and_return(["testuser\n", '', success_status])
+
+      expect(fetcher.send(:current_user)).to eq('testuser')
+    end
+
+    it 'logs a warning when gh api user fails' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'api', 'user', '--jq', '.login')
+        .and_return(['', 'error', failure_status])
+
+      fetcher.send(:current_user)
+
+      expect(logger).to have_received(:warn).with("Could not determine current user via 'gh api user'")
+    end
+
+    it 'returns nil when gh api user fails' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'api', 'user', '--jq', '.login')
+        .and_return(['', 'error', failure_status])
+
+      expect(fetcher.send(:current_user)).to be_nil
+    end
+
+    it 'does not memoize nil — retries on next call' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'api', 'user', '--jq', '.login')
+        .and_return(['', 'error', failure_status],
+                    ["testuser\n", '', success_status])
+
+      expect(fetcher.send(:current_user)).to be_nil
+      expect(fetcher.send(:current_user)).to eq('testuser')
+    end
+
+    it 'memoizes successful result' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'api', 'user', '--jq', '.login')
+        .and_return(["testuser\n", '', success_status])
+
+      fetcher.send(:current_user)
+      fetcher.send(:current_user)
+
+      expect(Open3).to have_received(:capture3)
+        .with('gh', 'api', 'user', '--jq', '.login')
+        .once
+    end
+  end
+
   describe '#view' do
     it 'returns parsed issue data' do
       issue_json = JSON.generate({ 'number' => 42, 'title' => 'Test', 'body' => 'Description' })
