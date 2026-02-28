@@ -149,7 +149,7 @@ module Ocak
 
       result = @claude.run_agent(
         'implementer',
-        "Resolve these merge conflicts. Conflicting files:\n#{conflicting.join("\n")}\n\n" \
+        "Resolve these merge conflicts.\n\n<conflicting_files>\n#{conflicting.join("\n")}\n</conflicting_files>\n\n" \
         'Open each file, find conflict markers (<<<<<<< ======= >>>>>>>), and resolve them. ' \
         'Then run `git add` on each resolved file.',
         chdir: worktree.path
