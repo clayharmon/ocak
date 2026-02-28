@@ -63,6 +63,25 @@ RSpec.describe Ocak::ProcessRunner do
       stderr_r.close unless stderr_r.closed?
     end
 
+    it 'does not emit warnings to stderr on normal subprocess completion' do
+      stdin = instance_double(IO, close: nil)
+      stdout_r, stdout_w = IO.pipe
+      stderr_r, stderr_w = IO.pipe
+      stdout_w.write("output\n")
+      stdout_w.close
+      stderr_w.close
+      wait_thr = double('wait_thr', pid: 1234)
+      status = instance_double(Process::Status, success?: true)
+      allow(wait_thr).to receive(:value).and_return(status)
+
+      allow(Open3).to receive(:popen3).and_yield(stdin, stdout_r, stderr_r, wait_thr)
+
+      expect { described_class.run(%w[echo output], chdir: chdir) }.not_to output.to_stderr
+    ensure
+      stdout_r.close unless stdout_r.closed?
+      stderr_r.close unless stderr_r.closed?
+    end
+
     it 'handles timeout by killing the process' do
       stdin = instance_double(IO, close: nil)
       stdout_r, stdout_w = IO.pipe
