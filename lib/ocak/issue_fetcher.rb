@@ -155,8 +155,6 @@ module Ocak
       authors = allowed_authors
       author_login = issue.dig('author', 'login')
 
-      return true if authors.empty? && @config.allowed_authors.any?
-
       if authors.any? && authors.include?(author_login)
         check_comment_requirement(issue)
       elsif authors.empty?
