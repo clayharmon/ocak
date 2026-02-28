@@ -18,7 +18,7 @@ RSpec.describe Ocak::Commands::Hiz do
                     language: 'ruby')
   end
 
-  let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, log_file_path: nil) }
+  let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, debug: nil, log_file_path: nil) }
   let(:claude) { instance_double(Ocak::ClaudeRunner) }
   let(:issues) { instance_double(Ocak::IssueFetcher, comment: nil, view: nil, transition: nil) }
   let(:success_result) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Done') }
@@ -449,14 +449,12 @@ RSpec.describe Ocak::Commands::Hiz do
 
     it 'does not crash when comment posting fails' do
       allow(issues).to receive(:comment).and_raise(StandardError, 'network error')
-      allow(logger).to receive(:debug)
 
       expect { command.call(issue: '42') }.not_to raise_error
     end
 
     it 'logs debug message when comment posting fails' do
       allow(issues).to receive(:comment).and_raise(StandardError, 'network error')
-      allow(logger).to receive(:debug)
 
       command.call(issue: '42')
 
