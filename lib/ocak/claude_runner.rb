@@ -14,9 +14,8 @@ module Ocak
       def warnings?          = output.to_s.include?("\u{1F7E1}")
     end
 
-    FailedStatus = Struct.new(:success?) do
-      def self.instance = new(false)
-    end
+    # Backwards-compat alias — FailedStatus now lives in ProcessRunner.
+    FailedStatus = ProcessRunner::FailedStatus
 
     AGENT_TOOLS = {
       'implementer' => 'Read,Write,Edit,Glob,Grep,Bash',

@@ -2,7 +2,6 @@
 
 require 'spec_helper'
 require 'ocak/process_runner'
-require 'ocak/claude_runner'
 
 RSpec.describe Ocak::ProcessRunner do
   describe '.run' do
@@ -104,6 +103,12 @@ RSpec.describe Ocak::ProcessRunner do
       stdout_r.close unless stdout_r.closed?
       stdout_w.close unless stdout_w.closed?
       stderr_r.close unless stderr_r.closed?
+    end
+  end
+
+  describe 'FailedStatus' do
+    it 'reports not success' do
+      expect(described_class::FailedStatus.instance.success?).to be false
     end
   end
 end

@@ -134,7 +134,7 @@ RSpec.describe Ocak::ClaudeRunner do
 
     it 'reports failure on non-zero exit' do
       allow(Ocak::ProcessRunner).to receive(:run)
-        .and_return(['', 'error', Ocak::ClaudeRunner::FailedStatus.instance])
+        .and_return(['', 'error', Ocak::ProcessRunner::FailedStatus.instance])
 
       result = runner.run_prompt('Analyze this')
       expect(result.success?).to be false
@@ -213,12 +213,6 @@ RSpec.describe Ocak::ClaudeRunner do
       result = runner.run_agent('reviewer', 'Review code')
       expect(result.success?).to be false
       expect(call_count).to eq(3) # initial + 2 retries
-    end
-  end
-
-  describe 'FailedStatus' do
-    it 'reports not success' do
-      expect(described_class::FailedStatus.instance.success?).to be false
     end
   end
 end
