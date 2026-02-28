@@ -252,8 +252,7 @@ module Ocak
         issues.comment(issue_number,
                        "Hiz (fast mode) failed at phase: #{phase}\n\n```\n#{output.to_s[0..1000]}\n```")
         warn "Issue ##{issue_number} failed at phase: #{phase}"
-        _, stderr, status = Open3.capture3('git', 'checkout', 'main', chdir: @config.project_dir)
-        logger.warn("Cleanup checkout to main failed: #{stderr}") unless status.success?
+        GitUtils.checkout_main(chdir: @config.project_dir, logger: logger)
       end
 
       def build_logger(issue_number)

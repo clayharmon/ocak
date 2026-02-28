@@ -177,4 +177,68 @@ RSpec.describe Ocak::GitUtils do
       end
     end
   end
+
+  describe '.checkout_main' do
+    context 'when checkout succeeds' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'checkout', 'main', chdir: chdir)
+          .and_return(['', '', success_status])
+      end
+
+      it 'does not log a warning' do
+        described_class.checkout_main(chdir: chdir, logger: logger)
+
+        expect(logger).not_to have_received(:warn)
+      end
+    end
+
+    context 'when checkout fails' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'checkout', 'main', chdir: chdir)
+          .and_return(['', 'error: pathspec', failure_status])
+      end
+
+      it 'logs a warning' do
+        described_class.checkout_main(chdir: chdir, logger: logger)
+
+        expect(logger).to have_received(:warn).with(/Cleanup checkout to main failed/)
+      end
+
+      it 'does not raise' do
+        expect { described_class.checkout_main(chdir: chdir, logger: logger) }.not_to raise_error
+      end
+    end
+
+    context 'when Open3 raises an exception' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'checkout', 'main', chdir: chdir)
+          .and_raise(Errno::ENOENT, 'git')
+      end
+
+      it 'rescues and logs a warning' do
+        described_class.checkout_main(chdir: chdir, logger: logger)
+
+        expect(logger).to have_received(:warn).with(/Cleanup checkout to main error/)
+      end
+
+      it 'does not raise' do
+        expect { described_class.checkout_main(chdir: chdir, logger: logger) }.not_to raise_error
+      end
+    end
+
+    context 'without a logger' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'checkout', 'main', chdir: chdir)
+          .and_return(['', 'error', failure_status])
+      end
+
+      it 'does not raise when logger is nil' do
+        expect { described_class.checkout_main(chdir: chdir) }.not_to raise_error
+      end
+    end
+  end
 end
