@@ -28,44 +28,27 @@ ocak run 42 --watch
 
 ```mermaid
 flowchart LR
-    A["/design\nCreate issue"] --> B["Label\nauto-ready"]
-    B --> C["Planner\nBatch & classify"]
-    C --> D["Worktree\nper issue"]
-    D --> E["Pipeline\nSteps"]
-    E --> F["Rebase\n& merge"]
-
-    style A fill:#f9f,stroke:#333
-    style B fill:#0e8a16,stroke:#333,color:#fff
-    style C fill:#1d76db,stroke:#333,color:#fff
-    style D fill:#6f42c1,stroke:#333,color:#fff
-    style E fill:#d73a49,stroke:#333,color:#fff
-    style F fill:#0e8a16,stroke:#333,color:#fff
+    A["/design<br>Create issue"] --> B["Label<br>auto-ready"]
+    B --> C["Planner<br>Batch & classify"]
+    C --> D["Worktree<br>per issue"]
+    D --> E["Pipeline<br>Steps"]
+    E --> F["Rebase<br>& merge"]
 ```
 
 ### Pipeline Steps
 
 ```mermaid
 flowchart TD
-    IMP["1. Implementer\n(opus)"] --> REV["2. Reviewer\n(sonnet)"]
-    REV -->|"🔴 findings"| FIX1["3. Fix\n(opus)"]
+    IMP["1. Implementer<br>(opus)"] --> REV["2. Reviewer<br>(sonnet)"]
+    REV -->|"🔴 findings"| FIX1["3. Fix<br>(opus)"]
     REV -->|"no findings"| SEC
-    FIX1 --> VER["4. Verify\n(sonnet)"]
-    VER --> SEC["5. Security Review\n(sonnet)"]
-    SEC -->|"🔴 findings"| FIX2["6. Security Fix\n(opus)"]
+    FIX1 --> VER["4. Verify<br>(sonnet)"]
+    VER --> SEC["5. Security Review<br>(sonnet)"]
+    SEC -->|"🔴 findings"| FIX2["6. Security Fix<br>(opus)"]
     SEC -->|"no findings"| DOC
-    FIX2 --> DOC["7. Documenter\n(sonnet)"]
-    DOC --> AUD["8. Auditor\n(sonnet)"]
-    AUD --> MRG["9. Merger\n(sonnet)"]
-
-    style IMP fill:#d73a49,stroke:#333,color:#fff
-    style REV fill:#1d76db,stroke:#333,color:#fff
-    style FIX1 fill:#d73a49,stroke:#333,color:#fff
-    style VER fill:#1d76db,stroke:#333,color:#fff
-    style SEC fill:#e36209,stroke:#333,color:#fff
-    style FIX2 fill:#d73a49,stroke:#333,color:#fff
-    style DOC fill:#6f42c1,stroke:#333,color:#fff
-    style AUD fill:#e36209,stroke:#333,color:#fff
-    style MRG fill:#0e8a16,stroke:#333,color:#fff
+    FIX2 --> DOC["7. Documenter<br>(sonnet)"]
+    DOC --> AUD["8. Auditor<br>(sonnet)"]
+    AUD --> MRG["9. Merger<br>(sonnet)"]
 ```
 
 Steps 5-8 are tagged `complexity: full` and get skipped for simple issues. The `--fast` flag forces all issues to simple complexity.
@@ -111,14 +94,12 @@ After all pipeline steps complete:
 
 ```mermaid
 flowchart LR
-    A["Commit\nchanges"] --> B["Rebase\nonto main"]
-    B -->|conflict| C["Implementer\nresolves"]
+    A["Commit<br>changes"] --> B["Rebase<br>onto main"]
+    B -->|conflict| C["Implementer<br>resolves"]
     C --> D
     B -->|clean| D["Run tests"]
     D --> E["Push branch"]
-    E --> F["Merger agent\ncreate PR + merge"]
-
-    style C fill:#d73a49,stroke:#333,color:#fff
+    E --> F["Merger agent<br>create PR + merge"]
 ```
 
 Merging is sequential — one issue at a time — so you don't get conflicts between parallel worktrees.
@@ -171,14 +152,9 @@ Lightweight alternative for quick PRs you'll review yourself:
 
 ```mermaid
 flowchart LR
-    A["Implementer\n(sonnet)"] --> B["Reviewer (haiku)\n+\nSecurity (sonnet)\nin parallel"]
-    B --> C["Verify\ntests + lint"]
-    C --> D["Create PR\n(no merge)"]
-
-    style A fill:#d73a49,stroke:#333,color:#fff
-    style B fill:#1d76db,stroke:#333,color:#fff
-    style C fill:#e36209,stroke:#333,color:#fff
-    style D fill:#0e8a16,stroke:#333,color:#fff
+    A["Implementer<br>(sonnet)"] --> B["Reviewer (haiku)<br>+<br>Security (sonnet)<br>in parallel"]
+    B --> C["Verify<br>tests + lint"]
+    C --> D["Create PR<br>(no merge)"]
 ```
 
 Runs in your current checkout (no worktree), uses cheaper models, creates a PR without merging. Roughly 5-10x cheaper than the full pipeline.
