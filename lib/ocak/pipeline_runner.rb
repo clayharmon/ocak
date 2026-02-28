@@ -331,7 +331,8 @@ module Ocak
     end
 
     def build_logger(issue_number: nil)
-      PipelineLogger.new(log_dir: File.join(@config.project_dir, @config.log_dir), issue_number: issue_number)
+      PipelineLogger.new(log_dir: File.join(@config.project_dir, @config.log_dir),
+                         issue_number: issue_number, log_level: @options.fetch(:log_level, :normal))
     end
 
     def build_claude(logger)

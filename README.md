@@ -19,7 +19,7 @@ ocak init
 ocak run --once --watch
 
 # Or run a single issue:
-ocak run --single 42 --watch
+ocak run 42 --watch
 ```
 
 ## How It Works
@@ -61,7 +61,7 @@ ocak run --single 42 --watch
 
 ### Skills
 
-Interactive skills for when you want to be in the loop:
+Interactive skills for use inside Claude Code (not standalone CLI commands):
 
 - `/design` — walks through your codebase, asks questions, produces a detailed issue
 - `/audit [scope]` — codebase sweep for security, patterns, tests, data, dependencies
@@ -221,22 +221,25 @@ The `/design` skill produces issues formatted for zero-context agents. Think of 
 
 ```
 ocak init [--force] [--no-ai]    Set up pipeline in current project
-ocak run [options]                Run the pipeline
+ocak run [N] [options]            Run the pipeline (N = single-issue mode)
   --watch                         Stream agent activity with color
-  --single N                      Run one issue, no worktrees
   --dry-run                       Show plan without executing
   --once                          Process current batch and exit
   --max-parallel N                Limit concurrency (default: 5)
   --poll-interval N               Seconds between polls (default: 60)
   --manual-review                 Create PRs without auto-merge; wait for human review
-  --audit                         Run auditor as post-pipeline gate; create PR with findings if issues found
+  --audit                         Run auditor as post-pipeline gate
+  --verbose                       Increase log detail
+  --quiet                         Suppress non-error output
 ocak resume N [--watch]           Resume a failed pipeline from last successful step
-ocak hiz N [--watch]              Fast-mode: implement (sonnet) + parallel review (haiku) + security (sonnet), creates PR (no merge)
+  --dry-run                       Show which steps would re-run
+  --verbose / --quiet             Control output verbosity
+ocak hiz N [--watch]              Fast-mode: implement + parallel review + security, creates PR
+  --dry-run                       Show pipeline plan without executing
+  --verbose / --quiet             Control output verbosity
 ocak status                       Show pipeline state
 ocak clean                        Remove stale worktrees
-ocak design [description]         Launch issue design session
-ocak audit [scope]                Run codebase audit
-ocak debt                         Track technical debt
+ocak design [description]         Launch interactive issue design session
 ```
 
 ## FAQ
@@ -272,7 +275,7 @@ Issues get labeled `pipeline-failed` with a comment explaining what went wrong. 
 **Can I run one issue manually?**
 
 ```bash
-ocak run --single 42 --watch
+ocak run 42 --watch
 ```
 
 Runs the full pipeline for issue #42 in your current checkout (no worktree).

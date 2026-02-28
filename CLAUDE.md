@@ -7,7 +7,7 @@ A Ruby gem that sets up and runs a multi-agent pipeline for autonomous GitHub is
 ```
 lib/ocak/
 ├── cli.rb                 # dry-cli registry, maps subcommands to command classes
-├── commands/              # One class per CLI subcommand (init, run, resume, hiz, design, audit, debt, status, clean)
+├── commands/              # One class per CLI subcommand (init, run, resume, hiz, design, status, clean)
 ├── config.rb              # Loads and validates ocak.yml, provides typed accessors
 ├── stack_detector.rb      # Detects project language, framework, test/lint/security tools via data-driven rules
 ├── monorepo_detector.rb   # MonorepoDetector module (included by StackDetector) — npm/pnpm/cargo/go workspace detection
