@@ -71,6 +71,7 @@ module Ocak
         @issues = issues
         @total_cost = 0.0
         @steps_run = 0
+        @review_results = {}
         start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         chdir = @config.project_dir
 
@@ -108,7 +109,7 @@ module Ocak
           return { phase: 'implement', output: result.output }
         end
 
-        run_reviews_in_parallel(issue_number, claude: claude, logger: logger, chdir: chdir)
+        @review_results = run_reviews_in_parallel(issue_number, claude: claude, logger: logger, chdir: chdir)
         nil
       end
 
@@ -125,24 +126,25 @@ module Ocak
           Thread.new do
             run_step(step, issue_number, claude: claude, logger: logger, chdir: chdir)
           rescue StandardError => e
-            # Rescue inside the thread so .value returns nil instead of re-raising in the parent
             logger.error("#{step[:role]} thread failed: #{e.message}")
             nil
           end
         end
 
+        results = {}
         threads.each_with_index do |thread, i|
           result = thread.value
           step = REVIEW_STEPS[i]
           if result
             @steps_run += 1
             @total_cost += result.cost_usd.to_f
+            results[step[:role]] = result if result.blocking_findings? || result.warnings?
           end
-          next if result.nil?
-          next if result.success?
+          next if result.nil? || result.success?
 
           logger.warn("#{step[:role]} reported issues but continuing")
         end
+        results
       end
 
       def run_step(step, issue_number, claude:, logger:, chdir:)
@@ -206,7 +208,7 @@ module Ocak
         issue_data = issues.view(issue_number)
         issue_title = issue_data&.dig('title')
         pr_title = issue_title ? "Fix ##{issue_number}: #{issue_title}" : "Fix ##{issue_number}"
-        pr_body = "Automated PR for issue ##{issue_number} (hiz fast mode)\n\nCloses ##{issue_number}"
+        pr_body = build_pr_body(issue_number)
 
         stdout, stderr, status = Open3.capture3(
           'gh', 'pr', 'create',
@@ -232,6 +234,17 @@ module Ocak
           message: "feat: implement issue ##{issue_number} [hiz]",
           logger: logger
         )
+      end
+
+      def build_pr_body(issue_number)
+        body = "Automated PR for issue ##{issue_number} (hiz fast mode)\n\nCloses ##{issue_number}"
+        return body if @review_results.nil? || @review_results.empty?
+
+        @review_results.each do |role, result|
+          heading = role == 'review' ? 'Review Findings' : 'Security Review Findings'
+          body += "\n\n---\n\n## #{heading}\n\n#{result.output}"
+        end
+        body
       end
 
       def handle_failure(issue_number, phase, output, issues:, logger:)

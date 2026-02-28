@@ -370,20 +370,20 @@ RSpec.describe Ocak::IssueFetcher do
   end
 
   describe '#ensure_labels' do
-    it 'calls gh label create --force for each label' do
+    it 'calls gh label create --force with color for each label' do
       allow(Open3).to receive(:capture3).and_return(['', '', success_status])
 
       fetcher.ensure_labels(%w[auto-ready auto-doing])
 
       expect(Open3).to have_received(:capture3)
-        .with('gh', 'label', 'create', 'auto-ready', '--force', chdir: '/project')
+        .with('gh', 'label', 'create', 'auto-ready', '--force', '--color', '0E8A16', chdir: '/project')
       expect(Open3).to have_received(:capture3)
-        .with('gh', 'label', 'create', 'auto-doing', '--force', chdir: '/project')
+        .with('gh', 'label', 'create', 'auto-doing', '--force', '--color', '1D76DB', chdir: '/project')
     end
 
     it 'handles failures gracefully' do
       allow(Open3).to receive(:capture3)
-        .with('gh', 'label', 'create', anything, '--force', chdir: '/project')
+        .with('gh', 'label', 'create', anything, '--force', '--color', anything, chdir: '/project')
         .and_raise(Errno::ENOENT, 'gh not found')
 
       expect { fetcher.ensure_labels(%w[auto-ready]) }.not_to raise_error
@@ -391,13 +391,22 @@ RSpec.describe Ocak::IssueFetcher do
   end
 
   describe '#ensure_label' do
-    it 'calls gh label create --force for a single label' do
+    it 'calls gh label create --force with the correct color for a known label' do
       allow(Open3).to receive(:capture3).and_return(['', '', success_status])
 
       fetcher.ensure_label('auto-doing')
 
       expect(Open3).to have_received(:capture3)
-        .with('gh', 'label', 'create', 'auto-doing', '--force', chdir: '/project')
+        .with('gh', 'label', 'create', 'auto-doing', '--force', '--color', '1D76DB', chdir: '/project')
+    end
+
+    it 'uses fallback color for unknown labels' do
+      allow(Open3).to receive(:capture3).and_return(['', '', success_status])
+
+      fetcher.ensure_label('some-unknown-label')
+
+      expect(Open3).to have_received(:capture3)
+        .with('gh', 'label', 'create', 'some-unknown-label', '--force', '--color', 'ededed', chdir: '/project')
     end
   end
 

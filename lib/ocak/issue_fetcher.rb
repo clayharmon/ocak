@@ -5,6 +5,15 @@ require 'json'
 
 module Ocak
   class IssueFetcher
+    LABEL_COLORS = {
+      'auto-ready' => '0E8A16',
+      'auto-doing' => '1D76DB',
+      'completed' => '6F42C1',
+      'pipeline-failed' => 'D93F0B',
+      'auto-reready' => 'FBCA04',
+      'auto-pending-human' => 'F9D0C4'
+    }.freeze
+
     def initialize(config:, logger: nil)
       @config = config
       @logger = logger
@@ -115,7 +124,9 @@ module Ocak
     end
 
     def ensure_label(label)
-      Open3.capture3('gh', 'label', 'create', label, '--force', chdir: @config.project_dir) # --force: update if exists
+      color = LABEL_COLORS.fetch(label, 'ededed')
+      Open3.capture3('gh', 'label', 'create', label, '--force', '--color', color,
+                     chdir: @config.project_dir) # --force: update if exists
     rescue StandardError => e
       @logger&.warn("Failed to create label '#{label}': #{e.message}")
     end
