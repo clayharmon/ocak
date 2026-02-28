@@ -9,10 +9,19 @@ stack:
 
 # Pipeline settings
 pipeline:
-  max_parallel: 3
+  max_parallel: 10
   poll_interval: 60
   worktree_dir: ".claude/worktrees"
   log_dir: "logs/pipeline"
+  # cost_budget: 5.00  # Max USD per issue pipeline (uncomment to enable)
+  # manual_review: false  # Create PRs without auto-merge; wait for human review
+
+# Safety — controls which issues the pipeline will process
+# Default (no config): only issues created by the current `gh` user
+safety:
+  allowed_authors: []            # Empty = current gh user only. Add usernames to allow others.
+  # require_comment: "auto-ready"  # Require this exact comment from an allowed author
+  max_issues_per_run: 20          # Circuit breaker: max issues processed per poll cycle
 
 # GitHub label state machine
 labels:
@@ -20,10 +29,11 @@ labels:
   in_progress: "auto-doing"
   completed: "completed"
   failed: "pipeline-failed"
-  reready: "auto-reready"
-  awaiting_review: "auto-pending-human"
+  # reready: "auto-reready"
+  # awaiting_review: "auto-pending-human"
 
 # Pipeline steps — customize by adding/removing/reordering
+# Each step can optionally specify `model:` to override the default (haiku|sonnet|opus)
 steps:
   - agent: implementer
     role: implement
@@ -40,10 +50,13 @@ steps:
   - agent: implementer
     role: fix
     condition: has_findings
+    complexity: full          # skipped for simple issues
   - agent: documenter
     role: document
+    complexity: full          # skipped for simple issues
   - agent: auditor
     role: audit
+    complexity: full          # skipped for simple issues
   - agent: merger
     role: merge
 
