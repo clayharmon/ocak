@@ -96,8 +96,8 @@ RSpec.describe Ocak::Config do
   describe 'pipeline defaults' do
     subject(:config) { described_class.new({}, dir) }
 
-    it 'defaults max_parallel to 3' do
-      expect(config.max_parallel).to eq(3)
+    it 'defaults max_parallel to 5' do
+      expect(config.max_parallel).to eq(5)
     end
 
     it 'defaults poll_interval to 60' do

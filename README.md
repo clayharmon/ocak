@@ -102,7 +102,7 @@ stack:
 
 # Pipeline settings
 pipeline:
-  max_parallel: 3        # Concurrent worktrees
+  max_parallel: 5        # Concurrent worktrees
   poll_interval: 60      # Seconds between polls
   worktree_dir: ".claude/worktrees"
   log_dir: "logs/pipeline"
@@ -229,7 +229,7 @@ ocak run [options]                Run the pipeline
   --single N                      Run one issue, no worktrees
   --dry-run                       Show plan without executing
   --once                          Process current batch and exit
-  --max-parallel N                Limit concurrency (default: 3)
+  --max-parallel N                Limit concurrency (default: 5)
   --poll-interval N               Seconds between polls (default: 60)
 ocak resume N [--watch]           Resume a failed pipeline from last successful step
 ocak hiz N [--watch]              Fast-mode: Sonnet-only implement+review+security, creates PR (no merge)

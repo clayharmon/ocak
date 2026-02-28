@@ -47,7 +47,7 @@ module Ocak
     end
 
     # Pipeline
-    def max_parallel  = @overrides[:max_parallel] || dig(:pipeline, :max_parallel) || 3
+    def max_parallel  = @overrides[:max_parallel] || dig(:pipeline, :max_parallel) || 5
     def poll_interval = @overrides[:poll_interval] || dig(:pipeline, :poll_interval) || 60
     def worktree_dir  = dig(:pipeline, :worktree_dir) || '.claude/worktrees'
     def log_dir       = dig(:pipeline, :log_dir) || 'logs/pipeline'
