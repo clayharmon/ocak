@@ -24,7 +24,8 @@ module Ocak
       logger.info("=== Starting pipeline for issue ##{issue_number} (#{complexity}) ===")
 
       state = { last_review_output: nil, had_fixes: false, completed_steps: [], total_cost: 0.0,
-                complexity: complexity, steps_run: 0, steps_skipped: 0 }
+                complexity: complexity, steps_run: 0, steps_skipped: 0,
+                audit_output: nil, audit_blocked: false }
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       post_pipeline_start_comment(issue_number, state)
 
@@ -51,7 +52,8 @@ module Ocak
       duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
       post_pipeline_summary_comment(issue_number, state, duration, success: true)
       logger.info("=== Pipeline complete for issue ##{issue_number} ===")
-      { success: true, output: 'Pipeline completed successfully' }
+      { success: true, output: 'Pipeline completed successfully',
+        audit_blocked: state[:audit_blocked], audit_output: state[:audit_output] }
     end
 
     private
@@ -129,8 +131,8 @@ module Ocak
     def skip_reason(step, state)
       condition = step[:condition]
 
+      return 'audit found blocking issues' if step[:role].to_s == 'merge' && @config.audit_mode && state[:audit_blocked]
       return 'manual review mode' if step[:role].to_s == 'merge' && @config.manual_review
-      return 'audit mode' if step[:role].to_s == 'merge' && @config.audit_mode
       return 'fast-track issue (simple complexity)' if step[:complexity] == 'full' && state[:complexity] == 'simple'
       if condition == 'has_findings' && !state[:last_review_output]&.include?("\u{1F534}")
         return 'no blocking findings from review'
@@ -144,6 +146,10 @@ module Ocak
       case role
       when 'review', 'verify', 'security', 'audit'
         state[:last_review_output] = result.output
+        if role == 'audit'
+          state[:audit_output] = result.output
+          state[:audit_blocked] = !result.success? || result.output.to_s.match?(/BLOCK|🔴/)
+        end
       when 'fix'
         state[:had_fixes] = true
         state[:last_review_output] = nil
@@ -226,7 +232,8 @@ module Ocak
         step = symbolize(step)
         step[:condition] ||
           (step[:complexity] == 'full' && state[:complexity] == 'simple') ||
-          (step[:role].to_s == 'merge' && @config.manual_review)
+          (step[:role].to_s == 'merge' && @config.manual_review) ||
+          (step[:role].to_s == 'merge' && @config.audit_mode) # merge may be skipped if audit finds blocking issues
       end
     end
 
