@@ -5,6 +5,10 @@ require 'open3'
 module Ocak
   # Runs a subprocess with streaming line output and timeout support.
   module ProcessRunner
+    FailedStatus = Struct.new(:success?) do
+      def self.instance = new(false)
+    end
+
     module_function
 
     def run(cmd, chdir:, timeout: nil, on_line: nil)
@@ -25,7 +29,7 @@ module Ocak
         [stdout, stderr, wait_thr.value]
       end
     rescue Errno::ENOENT => e
-      ['', e.message, ClaudeRunner::FailedStatus.instance]
+      ['', e.message, FailedStatus.instance]
     end
 
     def read_streams(out, err, ctx)
