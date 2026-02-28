@@ -419,22 +419,13 @@ RSpec.describe Ocak::IssueFetcher do
       expect(fetcher.send(:current_user)).to eq('testuser')
     end
 
-    it 'logs a warning when gh api user fails' do
-      allow(Open3).to receive(:capture3)
-        .with('gh', 'api', 'user', '--jq', '.login')
-        .and_return(['', 'error', failure_status])
-
-      fetcher.send(:current_user)
-
-      expect(logger).to have_received(:warn).with("Could not determine current user via 'gh api user'")
-    end
-
-    it 'returns nil when gh api user fails' do
+    it 'returns nil and logs a warning when gh api user fails' do
       allow(Open3).to receive(:capture3)
         .with('gh', 'api', 'user', '--jq', '.login')
         .and_return(['', 'error', failure_status])
 
       expect(fetcher.send(:current_user)).to be_nil
+      expect(logger).to have_received(:warn).with("Could not determine current user via 'gh api user'")
     end
 
     it 'does not memoize nil — retries on next call' do
