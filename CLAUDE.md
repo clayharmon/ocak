@@ -15,9 +15,10 @@ lib/ocak/
 ├── pipeline_runner.rb     # Orchestration: poll → plan → worktree → delegate to executor → merge
 ├── pipeline_executor.rb   # Step execution: run_pipeline, execute_step, conditions, cost tracking, progress comments
 ├── claude_runner.rb       # Wraps `claude -p` with stream-json parsing (StreamParser, AgentResult)
-├── issue_fetcher.rb       # GitHub CLI wrapper for issue listing, labeling, commenting, label creation
+├── issue_fetcher.rb       # GitHub CLI wrapper for all issue data access — listing, labeling, commenting, label creation, view
 ├── worktree_manager.rb    # Git worktree create/remove/list/clean
 ├── merge_manager.rb       # Sequential rebase + test + push, then delegates to merger agent
+├── git_utils.rb           # Shared git helpers — commit_changes (porcelain check → add -A → commit with exit-status checks)
 ├── planner.rb             # Batch planning: groups issues for parallel/sequential execution
 ├── pipeline_state.rb      # Persists per-issue pipeline progress for resume support
 ├── verification.rb        # Final verification checks (tests + scoped lint) extracted module
@@ -53,6 +54,9 @@ Each step in `ocak.yml` has an `agent`, `role`, and optional `condition`. Condit
 
 ### Worktree Isolation
 Parallel issues get separate git worktrees under `.claude/worktrees/`. After all pipeline steps complete, worktrees are rebased onto main, tested, pushed, and the merger agent creates+merges the PR.
+
+### Issue Data Access
+All GitHub issue data fetching goes through `IssueFetcher#view`. Classes that need issue data receive an `IssueFetcher` instance via constructor injection (`issues:` keyword param) rather than calling `gh` directly.
 
 ## Development
 

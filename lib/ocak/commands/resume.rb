@@ -84,7 +84,7 @@ module Ocak
 
       def attempt_merge(ctx)
         merger = MergeManager.new(config: ctx[:config], claude: ctx[:claude],
-                                  logger: ctx[:logger], watch: ctx[:watch])
+                                  logger: ctx[:logger], issues: ctx[:issues], watch: ctx[:watch])
         worktree = WorktreeManager::Worktree.new(
           path: ctx[:chdir], branch: ctx[:saved][:branch], issue_number: ctx[:issue_number]
         )

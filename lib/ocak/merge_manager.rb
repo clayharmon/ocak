@@ -1,15 +1,16 @@
 # frozen_string_literal: true
 
-require 'json'
 require 'open3'
 require 'shellwords'
+require_relative 'git_utils'
 
 module Ocak
   class MergeManager
-    def initialize(config:, claude:, logger:, watch: nil)
+    def initialize(config:, claude:, logger:, issues:, watch: nil)
       @config = config
       @claude = claude
       @logger = logger
+      @issues = issues
       @watch = watch
     end
 
@@ -93,15 +94,8 @@ module Ocak
     end
 
     def fetch_issue_title(issue_number)
-      stdout, _, status = Open3.capture3('gh', 'issue', 'view', issue_number.to_s,
-                                         '--json', 'title',
-                                         chdir: @config.project_dir)
-      return "Issue #{issue_number}" unless status.success?
-
-      data = JSON.parse(stdout)
-      data['title'] || "Issue #{issue_number}"
-    rescue JSON::ParserError
-      "Issue #{issue_number}"
+      data = @issues.view(issue_number, fields: 'title')
+      data&.dig('title') || "Issue #{issue_number}"
     end
 
     def extract_pr_number(gh_output)
@@ -110,19 +104,11 @@ module Ocak
     end
 
     def commit_uncommitted_changes(issue_number, worktree)
-      stdout, = git('status', '--porcelain', chdir: worktree.path)
-      return if stdout.strip.empty?
-
-      @logger.info('Found uncommitted changes, committing before merge...')
-      git('add', '-A', chdir: worktree.path)
-      _, stderr, status = git('commit', '-m', "chore: uncommitted pipeline changes for issue ##{issue_number}",
-                              chdir: worktree.path)
-
-      if status.success?
-        @logger.info('Committed uncommitted changes')
-      else
-        @logger.warn("Commit of uncommitted changes failed: #{stderr[0..200]}")
-      end
+      GitUtils.commit_changes(
+        chdir: worktree.path,
+        message: "chore: uncommitted pipeline changes for issue ##{issue_number}",
+        logger: @logger
+      )
     end
 
     def rebase_onto_main(worktree)

@@ -135,7 +135,7 @@ module Ocak
       results = threads.map(&:value)
 
       merger = MergeManager.new(
-        config: @config, claude: build_claude(logger), logger: logger, watch: @watch_formatter
+        config: @config, claude: build_claude(logger), logger: logger, issues: issues, watch: @watch_formatter
       )
       results.select { |r| r[:success] }.each do |result|
         merge_completed_issue(result, merger: merger, issues: issues, logger: logger)

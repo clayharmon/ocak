@@ -4,6 +4,7 @@ require 'open3'
 require 'securerandom'
 require_relative '../config'
 require_relative '../claude_runner'
+require_relative '../git_utils'
 require_relative '../issue_fetcher'
 require_relative '../verification'
 require_relative '../logger'
@@ -123,7 +124,7 @@ module Ocak
       end
 
       def push_and_create_pr(issue_number, branch, logger:, issues:, chdir:)
-        commit_changes(issue_number, chdir)
+        commit_changes(issue_number, chdir, logger: logger)
 
         _, stderr, status = Open3.capture3('git', 'push', '-u', 'origin', branch, chdir: chdir)
         unless status.success?
@@ -155,13 +156,12 @@ module Ocak
         end
       end
 
-      def commit_changes(issue_number, chdir)
-        stdout, = Open3.capture3('git', 'status', '--porcelain', chdir: chdir)
-        return if stdout.strip.empty?
-
-        Open3.capture3('git', 'add', '-A', chdir: chdir)
-        Open3.capture3('git', 'commit', '-m', "feat: implement issue ##{issue_number} [hiz]",
-                       chdir: chdir)
+      def commit_changes(issue_number, chdir, logger:)
+        GitUtils.commit_changes(
+          chdir: chdir,
+          message: "feat: implement issue ##{issue_number} [hiz]",
+          logger: logger
+        )
       end
 
       def handle_failure(issue_number, phase, output, issues:, logger:)
