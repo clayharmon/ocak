@@ -51,6 +51,8 @@ module Ocak
 
         setup_signal_handlers(runner)
         runner.run
+        runner.print_shutdown_summary if runner.shutting_down?
+        exit 130 if runner.shutting_down?
       rescue Config::ConfigNotFound => e
         warn "Error: #{e.message}"
         exit 1
@@ -68,9 +70,7 @@ module Ocak
       def setup_signal_handlers(runner)
         %w[INT TERM].each do |signal|
           trap(signal) do
-            warn "\nReceived #{signal}, shutting down gracefully..."
             runner.shutdown!
-            exit 0
           end
         end
       end

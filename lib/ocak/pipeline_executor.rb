@@ -14,9 +14,10 @@ module Ocak
 
     attr_writer :issues
 
-    def initialize(config:, issues: nil)
+    def initialize(config:, issues: nil, shutdown_check: nil)
       @config = config
       @issues = issues
+      @shutdown_check = shutdown_check
     end
 
     def run_pipeline(issue_number, logger:, claude:, chdir: nil, skip_steps: [], complexity: 'full')
@@ -32,20 +33,12 @@ module Ocak
       failure = run_pipeline_steps(issue_number, state, logger: logger, claude: claude, chdir: chdir,
                                                         skip_steps: skip_steps)
       log_cost_summary(state[:total_cost], logger)
-      if failure
-        duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
-        post_pipeline_summary_comment(issue_number, state, duration, success: false,
-                                                                     failed_phase: failure[:phase])
-        return failure
-      end
+
+      return build_interrupted_result(issue_number, state, logger) if state[:interrupted]
+      return post_failure_and_return(issue_number, state, failure, start_time) if failure
 
       failure = run_final_verification(issue_number, logger: logger, claude: claude, chdir: chdir)
-      if failure
-        duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
-        post_pipeline_summary_comment(issue_number, state, duration, success: false,
-                                                                     failed_phase: failure[:phase])
-        return failure
-      end
+      return post_failure_and_return(issue_number, state, failure, start_time) if failure
 
       pipeline_state.delete(issue_number)
 
@@ -58,8 +51,28 @@ module Ocak
 
     private
 
+    def build_interrupted_result(issue_number, state, logger)
+      logger.info("=== Pipeline interrupted for issue ##{issue_number} ===")
+      last_step = state[:completed_steps].any? ? @config.steps[state[:completed_steps].last] : nil
+      last_role = last_step ? symbolize(last_step)[:role].to_s : 'startup'
+      { success: false, phase: last_role, output: 'Pipeline interrupted', interrupted: true }
+    end
+
+    def post_failure_and_return(issue_number, state, failure, start_time)
+      duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
+      post_pipeline_summary_comment(issue_number, state, duration, success: false,
+                                                                   failed_phase: failure[:phase])
+      failure
+    end
+
     def run_pipeline_steps(issue_number, state, logger:, claude:, chdir:, skip_steps: [])
       @config.steps.each_with_index do |step, idx|
+        if @shutdown_check&.call
+          logger.info('Shutdown requested, stopping pipeline')
+          state[:interrupted] = true
+          break
+        end
+
         step = symbolize(step)
         role = step[:role].to_s
 

@@ -23,6 +23,7 @@ lib/ocak/
 ├── pipeline_state.rb      # Persists per-issue pipeline progress for resume support
 ├── verification.rb        # Final verification checks (tests + scoped lint) extracted module
 ├── process_runner.rb      # Subprocess runner with streaming line output and timeout support
+├── process_registry.rb    # Thread-safe PID registry for subprocess tracking during shutdown
 ├── stream_parser.rb       # Parses NDJSON from `claude --output-format stream-json`
 └── logger.rb              # PipelineLogger (file + terminal) and WatchFormatter (colored real-time output)
 
@@ -60,6 +61,13 @@ All GitHub issue data fetching goes through `IssueFetcher#view`. Classes that ne
 
 ### Pipeline Comments
 Both `pipeline_executor.rb` and `hiz.rb` post GitHub comments at pipeline start, per-step completion, skip events, retry warnings, and pipeline summary. Always use `post_step_comment` (wraps `@issues&.comment` with `rescue StandardError => nil`) so comment failures never crash the pipeline. Emoji vocabulary: 🚀 start, 🔄 in-progress, ✅ success, ❌ failure, ⏭️ skip, ⚠️ warning.
+
+### Two-Tiered Shutdown
+`PipelineRunner` implements two-tiered signal handling via `shutdown!`:
+- **Tier 1 (first Ctrl+C):** Sets `@shutting_down` flag. Current agent step finishes naturally, then the pipeline stops. Uncommitted worktree changes are committed with a `wip:` message, issue labels are reset to `:label_ready`, a ⚠️ comment is posted with the resume command, and a summary is printed to stderr. Exit code 130.
+- **Tier 2 (second Ctrl+C):** Calls `ProcessRegistry#kill_all` to SIGTERM→wait→SIGKILL all tracked subprocesses, then performs the same cleanup as tier 1. Exit code 130.
+- `ProcessRegistry` is a thread-safe PID set (`Mutex` + `Set`). `ProcessRunner#run` registers PIDs after `popen3` spawn and unregisters in `ensure`. `ClaudeRunner` passes the registry through to `ProcessRunner`.
+- `PipelineExecutor` accepts a `shutdown_check:` callable and checks it between steps; if true, it sets `state[:interrupted]` and breaks out of the step loop without deleting `PipelineState`.
 
 ## Development
 

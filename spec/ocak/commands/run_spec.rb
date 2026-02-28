@@ -28,7 +28,7 @@ RSpec.describe Ocak::Commands::Run do
                     steps: [{ 'agent' => 'implementer', 'role' => 'implement' }])
   end
 
-  let(:runner) { instance_double(Ocak::PipelineRunner, run: nil) }
+  let(:runner) { instance_double(Ocak::PipelineRunner, run: nil, shutting_down?: false, print_shutdown_summary: nil) }
 
   before do
     allow(Ocak::Config).to receive(:load).and_return(config)

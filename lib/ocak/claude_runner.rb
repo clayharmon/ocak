@@ -52,10 +52,11 @@ module Ocak
       /overloaded/i
     ].freeze
 
-    def initialize(config:, logger:, watch: nil)
+    def initialize(config:, logger:, watch: nil, registry: nil)
       @config = config
       @logger = logger
       @watch = watch
+      @registry = registry
     end
 
     def run_agent(agent_name, prompt, chdir: nil, model: nil, retries: MAX_RETRIES)
@@ -152,7 +153,7 @@ module Ocak
       cmd.push('--model', model) if model
       cmd.push('--', prompt)
 
-      ProcessRunner.run(cmd, chdir: chdir, timeout: TIMEOUT, on_line: on_line)
+      ProcessRunner.run(cmd, chdir: chdir, timeout: TIMEOUT, on_line: on_line, registry: @registry)
     end
 
     def extract_result_from_stream(raw)
