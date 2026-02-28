@@ -501,12 +501,43 @@ RSpec.describe Ocak::Commands::Hiz do
   end
 
   describe 'create_branch failure' do
-    it 'raises RuntimeError when git checkout -b fails' do
+    before do
       allow(Open3).to receive(:capture3)
         .with('git', 'checkout', '-b', anything, chdir: '/project')
         .and_return(['', 'fatal: cannot create branch', failure_status])
+    end
 
-      expect { command.call(issue: '42') }.to raise_error(RuntimeError, /Failed to create branch/)
+    it 'handles failure gracefully without raising' do
+      expect { command.call(issue: '42') }.not_to raise_error
+    end
+
+    it 'posts a failure comment on the issue' do
+      command.call(issue: '42')
+
+      expect(issues).to have_received(:comment)
+        .with(42, match(/failed at phase: create-branch/))
+    end
+
+    it 'checks out main to restore clean state' do
+      command.call(issue: '42')
+
+      expect(Open3).to have_received(:capture3)
+        .with('git', 'checkout', 'main', chdir: '/project')
+    end
+
+    it 'posts a pipeline failure summary comment' do
+      command.call(issue: '42')
+
+      expect(issues).to have_received(:comment)
+        .with(42, /Pipeline failed.*at phase: create-branch/)
+    end
+
+    it 'does not run any agents' do
+      allow(claude).to receive(:run_agent)
+
+      command.call(issue: '42')
+
+      expect(claude).not_to have_received(:run_agent)
     end
   end
 

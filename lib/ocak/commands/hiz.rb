@@ -79,25 +79,26 @@ module Ocak
         chdir = @config.project_dir
 
         post_hiz_start_comment(issue_number, state: state)
-        branch = create_branch(issue_number, chdir)
+        begin
+          branch = create_branch(issue_number, chdir)
+        rescue RuntimeError => e
+          fail_pipeline(issue_number, 'create-branch', e.message,
+                        start_time: start_time, state: state, logger: logger)
+          return
+        end
 
         failure = run_agents(issue_number, claude: claude, logger: logger, chdir: chdir, state: state)
         if failure
-          duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
-          post_hiz_summary_comment(issue_number, duration, success: false, failed_phase: failure[:phase],
-                                                           state: state)
-          handle_failure(issue_number, failure[:phase], failure[:output], issues: state.issues, logger: logger)
+          fail_pipeline(issue_number, failure[:phase], failure[:output],
+                        start_time: start_time, state: state, logger: logger)
           return
         end
 
         verification_failure = run_final_verification_step(issue_number, claude: claude, logger: logger,
                                                                          chdir: chdir, state: state)
         if verification_failure
-          duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
-          post_hiz_summary_comment(issue_number, duration, success: false, failed_phase: 'final-verify',
-                                                           state: state)
-          handle_failure(issue_number, 'final-verify', verification_failure[:output],
-                         issues: state.issues, logger: logger)
+          fail_pipeline(issue_number, 'final-verify', verification_failure[:output],
+                        start_time: start_time, state: state, logger: logger)
           return
         end
 
@@ -245,6 +246,12 @@ module Ocak
           body += "\n\n---\n\n## #{heading}\n\n#{result.output}"
         end
         body
+      end
+
+      def fail_pipeline(issue_number, phase, output, start_time:, state:, logger:)
+        duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
+        post_hiz_summary_comment(issue_number, duration, success: false, failed_phase: phase, state: state)
+        handle_failure(issue_number, phase, output, issues: state.issues, logger: logger)
       end
 
       def handle_failure(issue_number, phase, output, issues:, logger:)
