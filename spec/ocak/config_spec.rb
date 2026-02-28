@@ -307,6 +307,49 @@ RSpec.describe Ocak::Config do
     end
   end
 
+  describe 'path traversal validation' do
+    describe '#worktree_dir' do
+      it 'allows normal relative paths' do
+        config = described_class.new({ pipeline: { worktree_dir: '.claude/worktrees' } }, dir)
+        expect(config.worktree_dir).to eq('.claude/worktrees')
+      end
+
+      it 'raises ConfigError for path traversal' do
+        config = described_class.new({ pipeline: { worktree_dir: '../../etc' } }, dir)
+        expect { config.worktree_dir }.to raise_error(Ocak::Config::ConfigError, /escapes project directory/)
+      end
+    end
+
+    describe '#log_dir' do
+      it 'allows normal relative paths' do
+        config = described_class.new({ pipeline: { log_dir: 'logs/pipeline' } }, dir)
+        expect(config.log_dir).to eq('logs/pipeline')
+      end
+
+      it 'raises ConfigError for path traversal' do
+        config = described_class.new({ pipeline: { log_dir: '../../../tmp/evil' } }, dir)
+        expect { config.log_dir }.to raise_error(Ocak::Config::ConfigError, /escapes project directory/)
+      end
+    end
+
+    describe '#agent_path' do
+      it 'allows normal custom agent paths' do
+        config = described_class.new({ agents: { custom: '.claude/agents/custom.md' } }, dir)
+        expect(config.agent_path(:custom)).to eq(File.join(dir, '.claude/agents/custom.md'))
+      end
+
+      it 'raises ConfigError for custom path traversal' do
+        config = described_class.new({ agents: { evil: '../../etc/passwd' } }, dir)
+        expect { config.agent_path(:evil) }.to raise_error(Ocak::Config::ConfigError, /escapes project directory/)
+      end
+
+      it 'skips validation for default paths' do
+        config = described_class.new({}, dir)
+        expect(config.agent_path(:implementer)).to eq(File.join(dir, '.claude/agents/implementer.md'))
+      end
+    end
+  end
+
   describe 'validation' do
     it 'raises on non-hash data' do
       expect { described_class.new('invalid', dir) }.to raise_error(Ocak::Config::ConfigError)

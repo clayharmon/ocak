@@ -49,8 +49,15 @@ module Ocak
     # Pipeline
     def max_parallel  = @overrides[:max_parallel] || dig(:pipeline, :max_parallel) || 5
     def poll_interval = @overrides[:poll_interval] || dig(:pipeline, :poll_interval) || 60
-    def worktree_dir  = dig(:pipeline, :worktree_dir) || '.claude/worktrees'
-    def log_dir       = dig(:pipeline, :log_dir) || 'logs/pipeline'
+
+    def worktree_dir
+      validate_path(dig(:pipeline, :worktree_dir) || '.claude/worktrees')
+    end
+
+    def log_dir
+      validate_path(dig(:pipeline, :log_dir) || 'logs/pipeline')
+    end
+
     def cost_budget   = dig(:pipeline, :cost_budget)
     def manual_review = @overrides[:manual_review] || dig(:pipeline, :manual_review) || false
     def audit_mode    = @overrides[:audit_mode] || dig(:pipeline, :audit_mode) || false
@@ -80,12 +87,19 @@ module Ocak
     # Agent paths
     def agent_path(name)
       custom = dig(:agents, name.to_sym)
-      return File.join(@project_dir, custom) if custom
+      return File.join(@project_dir, validate_path(custom)) if custom
 
       File.join(@project_dir, '.claude', 'agents', "#{name.to_s.tr('_', '-')}.md")
     end
 
     private
+
+    def validate_path(relative)
+      expanded = File.expand_path(File.join(@project_dir, relative))
+      return relative if expanded.start_with?("#{@project_dir}/") || expanded == @project_dir
+
+      raise ConfigError, "Path '#{relative}' escapes project directory"
+    end
 
     def dig(*keys)
       keys.reduce(@data) { |h, k| h.is_a?(Hash) ? h[k] : nil }
