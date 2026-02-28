@@ -6,6 +6,17 @@ require 'ocak/process_registry'
 RSpec.describe Ocak::ProcessRegistry do
   subject(:registry) { described_class.new }
 
+  describe 'Set availability' do
+    it 'constructs and supports register/unregister without NameError' do
+      reg = described_class.new
+      reg.register(1)
+      reg.unregister(1)
+
+      expect(reg.pids).to be_empty
+      expect(reg.pids).to be_a(Set)
+    end
+  end
+
   describe '#register and #unregister' do
     it 'tracks registered PIDs' do
       registry.register(100)
