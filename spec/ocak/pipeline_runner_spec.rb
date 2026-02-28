@@ -169,7 +169,7 @@ RSpec.describe Ocak::PipelineRunner do
       [
         { 'agent' => 'implementer', 'role' => 'implement' },
         { 'agent' => 'reviewer', 'role' => 'review' },
-        { 'agent' => 'security_reviewer', 'role' => 'security' },
+        { 'agent' => 'security-reviewer', 'role' => 'security' },
         { 'agent' => 'documenter', 'role' => 'document', 'complexity' => 'full' },
         { 'agent' => 'auditor', 'role' => 'audit', 'complexity' => 'full' },
         { 'agent' => 'merger', 'role' => 'merge' }

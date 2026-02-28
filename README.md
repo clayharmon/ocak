@@ -133,7 +133,7 @@ steps:
   - agent: reviewer
     role: verify
     condition: had_fixes        # Only runs if fixes were made
-  - agent: security_reviewer
+  - agent: security-reviewer
     role: security
   - agent: implementer
     role: fix
