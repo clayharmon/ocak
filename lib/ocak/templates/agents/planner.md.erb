@@ -37,14 +37,17 @@ For each issue, determine:
 
 Two issues CANNOT be parallelized if they:
 
-- Touch the same files
 - Both require database migrations (timestamp/ordering conflicts)
-- Both modify shared base classes or utilities
-- Both modify the same routes or configuration
 - Have an explicit dependency (issue A depends on issue B)
-- Both modify test fixtures or factories
 
-Two issues CAN be parallelized if they:
+Two issues CAN be parallelized even if they:
+
+- Touch the same files (the merge step handles rebase conflicts automatically)
+- Both modify shared base classes or utilities
+- Both modify test fixtures or factories
+- Both modify the same routes or configuration
+
+Two issues are IDEAL for parallelization if they:
 
 - Touch completely different areas of the codebase
 - Modify different modules/namespaces with no overlap
@@ -79,8 +82,8 @@ Return valid JSON (no markdown, no code fences):
 
 ### Rules
 
-- Maximum <%= "3" %> issues per batch
-- When in doubt, serialize — false negatives (missed parallelism) are safer than false positives (merge conflicts)
+- Maximum <%= max_parallel %> issues per batch
+- When in doubt, parallelize — the merge step handles rebase conflicts automatically
 - Issues with migrations always go in separate batches unless they touch completely different schemas
 - If only one issue exists, output a single batch with one issue
 - When in doubt about complexity, use `"full"` — it's safer to run extra steps than to skip needed ones

@@ -89,6 +89,7 @@ module Ocak
       monorepo = @stack.respond_to?(:monorepo) ? @stack.monorepo : false
       packages = @stack.respond_to?(:packages) ? (@stack.packages || []) : []
       project_dir = @project_dir
+      max_parallel = 5
 
       binding
     end
