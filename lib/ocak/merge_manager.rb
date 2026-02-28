@@ -123,7 +123,8 @@ module Ocak
       return true if status.success?
 
       @logger.warn("Rebase conflict, aborting rebase: #{stderr}")
-      git('rebase', '--abort', chdir: worktree.path)
+      _, abort_stderr, abort_status = git('rebase', '--abort', chdir: worktree.path)
+      @logger.warn("git rebase --abort failed: #{abort_stderr}") unless abort_status.success?
 
       # Fall back to merge strategy
       @logger.info('Attempting merge strategy instead...')

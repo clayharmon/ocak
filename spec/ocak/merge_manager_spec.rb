@@ -158,6 +158,38 @@ RSpec.describe Ocak::MergeManager do
       end
     end
 
+    context 'when git rebase --abort fails' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: worktree.path)
+          .and_return(['', 'conflict', failure_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', '--abort', chdir: worktree.path)
+          .and_return(['', 'error: could not abort', failure_status])
+        # Merge fallback succeeds
+        allow(Open3).to receive(:capture3)
+          .with('git', 'merge', 'origin/main', '--no-edit', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(claude).to receive(:run_agent)
+          .and_return(Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Merged'))
+      end
+
+      it 'logs a warning about the abort failure' do
+        manager.merge(42, worktree)
+
+        expect(logger).to have_received(:warn).with(/git rebase --abort failed/)
+      end
+    end
+
     context 'when tests fail after rebase' do
       before do
         allow(Open3).to receive(:capture3)
