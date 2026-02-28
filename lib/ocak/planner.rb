@@ -46,7 +46,10 @@ module Ocak
       json_match = output.match(/\{[\s\S]*"batches"[\s\S]*\}/)
       if json_match
         parsed = JSON.parse(json_match[0])
-        parsed['batches']
+        batches = parsed['batches']
+        return sequential_batches(issues) unless batches.is_a?(Array)
+
+        batches
       else
         logger.warn('Could not parse planner output, falling back to sequential')
         sequential_batches(issues)

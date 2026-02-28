@@ -106,6 +106,24 @@ RSpec.describe Ocak::Planner do
       expect(logger).to have_received(:warn).with(/Could not parse/)
     end
 
+    it 'falls back to sequential when batches key is missing from valid JSON' do
+      output = '{"plans": [{"id": 1}]}'
+
+      result = host.parse_planner_output(output, issues, logger)
+
+      expect(result.size).to eq(1)
+      expect(result[0]['batch']).to eq(1)
+    end
+
+    it 'falls back to sequential when batches is not an array' do
+      output = '{"batches": "not an array"}'
+
+      result = host.parse_planner_output(output, issues, logger)
+
+      expect(result.size).to eq(1)
+      expect(result[0]['batch']).to eq(1)
+    end
+
     it 'falls back to sequential on malformed JSON' do
       output = '{"batches": [invalid json}'
 
