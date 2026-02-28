@@ -16,3 +16,4 @@
 # Ocak / Claude Code
 .claude/worktrees/
 logs/pipeline/
+.ocak/
