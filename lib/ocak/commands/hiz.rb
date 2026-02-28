@@ -50,7 +50,7 @@ module Ocak
           return
         end
 
-        logger = build_logger(issue_number)
+        @logger = logger = build_logger(issue_number)
         watch_formatter = options[:watch] ? WatchFormatter.new : nil
         claude = ClaudeRunner.new(config: @config, logger: logger, watch: watch_formatter)
         issues = IssueFetcher.new(config: @config, logger: logger)

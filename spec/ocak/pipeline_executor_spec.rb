@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'tmpdir'
 require 'ocak/pipeline_executor'
 
 RSpec.describe Ocak::PipelineExecutor do
@@ -503,6 +504,15 @@ RSpec.describe Ocak::PipelineExecutor do
       expect(claude).to have_received(:run_agent).with('reviewer', anything, chdir: anything)
     end
 
+    it 'logs debug message when comment posting fails' do
+      allow(issues_fetcher).to receive(:comment).and_raise(StandardError, 'network error')
+      allow(claude).to receive(:run_agent).and_return(result_with_cost)
+
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(logger).to have_received(:debug).with('Step comment failed: network error').at_least(:once)
+    end
+
     it 'works without issues fetcher (nil)' do
       allow(claude).to receive(:run_agent).and_return(success_result)
 
@@ -776,6 +786,14 @@ RSpec.describe Ocak::PipelineExecutor do
       expect(result[:success]).to be true
     end
 
+    it 'logs debug message when sidecar write fails' do
+      allow(FileUtils).to receive(:mkdir_p).with(a_string_matching(%r{\.ocak/logs})).and_raise(Errno::EACCES)
+
+      executor.run_pipeline(42, logger: logger, claude: claude, chdir: dir)
+
+      expect(logger).to have_received(:debug).with(/Step output write failed:/).at_least(:once)
+    end
+
     it 'does not crash when File.write raises' do
       allow(File).to receive(:write).and_call_original
       allow(File).to receive(:write).with(a_string_matching(/step-\d+-/), anything).and_raise(Errno::ENOSPC)
@@ -783,6 +801,15 @@ RSpec.describe Ocak::PipelineExecutor do
       result = executor.run_pipeline(42, logger: logger, claude: claude, chdir: dir)
 
       expect(result[:success]).to be true
+    end
+
+    it 'logs debug message when File.write raises' do
+      allow(File).to receive(:write).and_call_original
+      allow(File).to receive(:write).with(a_string_matching(/step-\d+-/), anything).and_raise(Errno::ENOSPC)
+
+      executor.run_pipeline(42, logger: logger, claude: claude, chdir: dir)
+
+      expect(logger).to have_received(:debug).with(/Step output write failed:/).at_least(:once)
     end
   end
 
@@ -909,6 +936,15 @@ RSpec.describe Ocak::PipelineExecutor do
       result = executor.run_pipeline(42, logger: logger, claude: claude)
 
       expect(result[:success]).to be true
+    end
+
+    it 'logs debug message when report save fails' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(run_report).to receive(:save).and_raise(StandardError, 'disk full')
+
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(logger).to have_received(:debug).with('Report save failed: disk full')
     end
   end
 end
