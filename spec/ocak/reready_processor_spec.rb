@@ -365,6 +365,49 @@ RSpec.describe Ocak::RereadyProcessor do
       end
     end
 
+    context 'when command has unmatched quotes' do
+      let(:config_bad_cmd) do
+        instance_double(Ocak::Config,
+                        project_dir: '/project',
+                        label_reready: 'auto-reready',
+                        test_command: "bundle exec 'unclosed",
+                        lint_check_command: nil)
+      end
+
+      let(:bad_cmd_processor) do
+        described_class.new(config: config_bad_cmd, logger: logger, claude: claude, issues: issues)
+      end
+
+      before do
+        allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
+        allow(issues).to receive(:fetch_pr_comments).and_return({ comments: [], reviews: [] })
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title,body')
+          .and_return({ 'title' => 'Fix bug', 'body' => 'desc' })
+
+        # Checkout
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'auto/issue-42-abc123', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'checkout', 'auto/issue-42-abc123', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'pull', '--rebase', 'origin', 'auto/issue-42-abc123', chdir: '/project')
+          .and_return(['', '', success_status])
+
+        allow(claude).to receive(:run_agent).and_return(success_result)
+
+        allow(issues).to receive(:pr_transition).and_return(true)
+        allow(issues).to receive(:pr_comment).and_return(true)
+      end
+
+      it 'returns false and logs a warning instead of crashing' do
+        expect(bad_cmd_processor.process(pr)).to be false
+        expect(logger).to have_received(:warn).with(/Invalid shell command in config/).at_least(:once)
+      end
+    end
+
     context 'when cleanup checkout to main fails' do
       before do
         allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
