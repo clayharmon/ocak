@@ -145,6 +145,93 @@ RSpec.describe Ocak::Verification do
     end
   end
 
+  describe '#run_verification_with_retry' do
+    let(:claude) { instance_double(Ocak::ClaudeRunner) }
+
+    it 'returns nil when no commands configured' do
+      allow(config).to receive(:test_command).and_return(nil)
+      allow(config).to receive(:lint_check_command).and_return(nil)
+      comments = []
+
+      result = host.run_verification_with_retry(logger: logger, claude: claude, chdir: chdir) do |body|
+        comments << body
+      end
+
+      expect(result).to be_nil
+      expect(comments).to be_empty
+    end
+
+    it 'calls block with start and complete messages on success' do
+      allow(Open3).to receive(:capture3)
+        .with('bundle', 'exec', 'rspec', chdir: chdir)
+        .and_return(['ok', '', instance_double(Process::Status, success?: true)])
+      allow(Open3).to receive(:capture3)
+        .with('git', 'diff', '--name-only', 'main', chdir: chdir)
+        .and_return(['', '', instance_double(Process::Status, success?: true)])
+      comments = []
+
+      result = host.run_verification_with_retry(logger: logger, claude: claude, chdir: chdir) do |body|
+        comments << body
+      end
+
+      expect(result).to be_nil
+      expect(comments.size).to eq(2)
+      expect(comments[0]).to include('final-verify')
+      expect(comments[1]).to include("\u{2705}")
+    end
+
+    it 'calls block with warning and fail messages after double failure' do
+      allow(Open3).to receive(:capture3)
+        .with('bundle', 'exec', 'rspec', chdir: chdir)
+        .and_return(['failures', 'err', instance_double(Process::Status, success?: false)])
+      allow(Open3).to receive(:capture3)
+        .with('git', 'diff', '--name-only', 'main', chdir: chdir)
+        .and_return(['', '', instance_double(Process::Status, success?: true)])
+      allow(claude).to receive(:run_agent)
+      comments = []
+
+      result = host.run_verification_with_retry(logger: logger, claude: claude, chdir: chdir) do |body|
+        comments << body
+      end
+
+      expect(result).to include(success: false)
+      expect(comments.size).to eq(3)
+      expect(comments[0]).to include('final-verify')
+      expect(comments[1]).to include("\u{26A0}")
+      expect(comments[2]).to include("\u{274C}")
+    end
+
+    it 'passes model to claude.run_agent when specified' do
+      allow(Open3).to receive(:capture3)
+        .with('bundle', 'exec', 'rspec', chdir: chdir)
+        .and_return(['failures', 'err', instance_double(Process::Status, success?: false)])
+      allow(Open3).to receive(:capture3)
+        .with('git', 'diff', '--name-only', 'main', chdir: chdir)
+        .and_return(['', '', instance_double(Process::Status, success?: true)])
+      allow(claude).to receive(:run_agent)
+
+      host.run_verification_with_retry(logger: logger, claude: claude, chdir: chdir, model: 'sonnet') { |body| body }
+
+      expect(claude).to have_received(:run_agent)
+        .with('implementer', anything, chdir: chdir, model: 'sonnet')
+    end
+
+    it 'does not pass model when nil' do
+      allow(Open3).to receive(:capture3)
+        .with('bundle', 'exec', 'rspec', chdir: chdir)
+        .and_return(['failures', 'err', instance_double(Process::Status, success?: false)])
+      allow(Open3).to receive(:capture3)
+        .with('git', 'diff', '--name-only', 'main', chdir: chdir)
+        .and_return(['', '', instance_double(Process::Status, success?: true)])
+      allow(claude).to receive(:run_agent)
+
+      host.run_verification_with_retry(logger: logger, claude: claude, chdir: chdir) { |body| body }
+
+      expect(claude).to have_received(:run_agent)
+        .with('implementer', anything, chdir: chdir)
+    end
+  end
+
   describe '#lint_extensions_for' do
     it 'returns ruby extensions' do
       expect(host.lint_extensions_for('ruby')).to eq(%w[.rb .rake .gemspec])
