@@ -53,6 +53,7 @@ module Ocak
     def log_dir       = dig(:pipeline, :log_dir) || 'logs/pipeline'
     def cost_budget   = dig(:pipeline, :cost_budget)
     def manual_review = @overrides[:manual_review] || dig(:pipeline, :manual_review) || false
+    def audit_mode    = @overrides[:audit_mode] || dig(:pipeline, :audit_mode) || false
 
     # Safety
     def allowed_authors    = dig(:safety, :allowed_authors) || []
@@ -105,7 +106,6 @@ module Ocak
         { agent: 'security-reviewer', role: 'security' },
         { agent: 'implementer', role: 'fix', condition: 'has_findings', complexity: 'full' },
         { agent: 'documenter', role: 'document', complexity: 'full' },
-        { agent: 'auditor', role: 'audit', complexity: 'full' },
         { agent: 'merger', role: 'merge' }
       ]
     end

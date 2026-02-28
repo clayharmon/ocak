@@ -205,8 +205,13 @@ RSpec.describe Ocak::Config do
   describe '#steps' do
     it 'returns default steps when none configured' do
       config = described_class.new({}, dir)
-      expect(config.steps.size).to eq(9)
+      expect(config.steps.size).to eq(8)
       expect(config.steps.first).to include(agent: 'implementer', role: 'implement')
+    end
+
+    it 'does not include audit step in default steps' do
+      config = described_class.new({}, dir)
+      expect(config.steps.none? { |s| s[:role] == 'audit' }).to be true
     end
 
     it 'returns configured steps' do
@@ -261,6 +266,24 @@ RSpec.describe Ocak::Config do
 
     it 'returns configured max_issues_per_run' do
       expect(config.max_issues_per_run).to eq(10)
+    end
+  end
+
+  describe 'audit_mode' do
+    it 'defaults to false' do
+      config = described_class.new({}, dir)
+      expect(config.audit_mode).to be false
+    end
+
+    it 'reads from pipeline config' do
+      config = described_class.new({ pipeline: { audit_mode: true } }, dir)
+      expect(config.audit_mode).to be true
+    end
+
+    it 'can be overridden' do
+      config = described_class.new({}, dir)
+      config.override(:audit_mode, true)
+      expect(config.audit_mode).to be true
     end
   end
 

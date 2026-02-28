@@ -2,7 +2,7 @@
 
 *Ocak (pronounced "oh-JAHK") is Turkish for "forge" or "hearth" — the place where raw material meets fire and becomes something useful. Also: let 'em cook.*
 
-Multi-agent pipeline that processes GitHub issues autonomously with Claude Code. You write an issue, label it, and ocak runs it through implement -> review -> fix -> security review -> document -> audit -> merge. Each issue gets its own worktree so they can run in parallel.
+Multi-agent pipeline that processes GitHub issues autonomously with Claude Code. You write an issue, label it, and ocak runs it through implement -> review -> fix -> security review -> document -> merge. Each issue gets its own worktree so they can run in parallel.
 
 ## Quick Start
 
@@ -30,7 +30,7 @@ ocak run --single 42 --watch
   /design        Label           Pipeline
   ┌──────┐    ┌──────────┐    ┌───────────────────────────────────────────┐
   │ User │───>│auto-ready│───>│ implement → review → fix → security →    │
-  │ idea │    │  label   │    │ document → audit → merge PR              │
+  │ idea │    │  label   │    │ document → merge PR                      │
   └──────┘    └──────────┘    └───────────────────────────────────────────┘
                                  │           │          │
                                  ▼           ▼          ▼
@@ -53,7 +53,7 @@ ocak run --single 42 --watch
 | **implementer** | Write code and tests | Read, Write, Edit, Bash | opus |
 | **reviewer** | Check patterns, tests, quality | Read, Grep, Glob (read-only) | sonnet |
 | **security-reviewer** | OWASP Top 10, auth, injection | Read, Grep, Glob, Bash | sonnet |
-| **auditor** | Pre-merge gate on changed files | Read, Grep, Glob (read-only) | sonnet |
+| **auditor** | Post-pipeline security gate (triggered by `--audit` flag) | Read, Grep, Glob (read-only) | sonnet |
 | **documenter** | Add missing docs | Read, Write, Edit | sonnet |
 | **merger** | Create PR, merge, close issue | Read, Grep, Bash | sonnet |
 | **planner** | Determine safe parallelization | Read, Grep, Glob (read-only) | sonnet |
@@ -70,7 +70,7 @@ Interactive skills for when you want to be in the loop:
 
 ### Complexity Classification
 
-The planner classifies each issue as `simple` or `full`. Simple issues skip steps tagged with `complexity: full` (second fix pass, documenter, auditor) — so a typo fix doesn't burn through the whole pipeline.
+The planner classifies each issue as `simple` or `full`. Simple issues skip steps tagged with `complexity: full` (second fix pass, documenter) — so a typo fix doesn't burn through the whole pipeline.
 
 ### Monorepo Support
 
@@ -141,9 +141,6 @@ steps:
     complexity: full            # Skipped for simple issues
   - agent: documenter
     role: document
-    complexity: full            # Skipped for simple issues
-  - agent: auditor
-    role: audit
     complexity: full            # Skipped for simple issues
   - agent: merger
     role: merge
@@ -231,6 +228,8 @@ ocak run [options]                Run the pipeline
   --once                          Process current batch and exit
   --max-parallel N                Limit concurrency (default: 5)
   --poll-interval N               Seconds between polls (default: 60)
+  --manual-review                 Create PRs without auto-merge; wait for human review
+  --audit                         Run auditor as post-pipeline gate; create PR with findings if issues found
 ocak resume N [--watch]           Resume a failed pipeline from last successful step
 ocak hiz N [--watch]              Fast-mode: implement (sonnet) + parallel review (haiku) + security (sonnet), creates PR (no merge)
 ocak status                       Show pipeline state

@@ -14,6 +14,7 @@ RSpec.describe Ocak::PipelineRunner do
                     label_reready: 'auto-reready',
                     label_awaiting_review: 'auto-pending-human',
                     manual_review: false,
+                    audit_mode: false,
                     log_dir: 'logs/pipeline',
                     poll_interval: 1,
                     max_parallel: 2,
@@ -329,6 +330,307 @@ RSpec.describe Ocak::PipelineRunner do
 
         expect(issues).to have_received(:fetch_reready_prs).ordered
         expect(issues).to have_received(:fetch_ready).ordered
+      end
+    end
+  end
+
+  describe 'audit gate' do
+    let(:clean_audit) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'All checks passed') }
+    let(:findings_audit) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: "Found \u{1F534} hardcoded secret") }
+    let(:block_audit) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'BLOCK: security issue') }
+    let(:failed_audit) { Ocak::ClaudeRunner::AgentResult.new(success: false, output: 'Agent crashed') }
+
+    context 'single mode + audit + findings' do
+      subject(:runner) { described_class.new(config: config, options: { single: 42 }) }
+
+      before do
+        allow(config).to receive(:audit_mode).and_return(true)
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:transition)
+        allow(issues).to receive(:pr_comment)
+        allow(claude).to receive(:run_agent).with('implementer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('reviewer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('merger', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                            .and_return(findings_audit)
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'view', '--json', 'number', chdir: '/project')
+          .and_return(['{"number":99}', '', instance_double(Process::Status, success?: true)])
+      end
+
+      it 'creates PR and posts audit comment' do
+        runner.run
+
+        expect(claude).to have_received(:run_agent).with('auditor', anything, chdir: '/project')
+        expect(claude).to have_received(:run_agent)
+          .with('merger', /do NOT merge.*do NOT close/i, chdir: '/project')
+        expect(issues).to have_received(:transition)
+          .with(42, from: 'in-progress', to: 'auto-pending-human')
+        expect(issues).to have_received(:pr_comment).with(99, /Audit Report/)
+      end
+    end
+
+    context 'single mode + audit + BLOCK keyword' do
+      subject(:runner) { described_class.new(config: config, options: { single: 42 }) }
+
+      before do
+        allow(config).to receive(:audit_mode).and_return(true)
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:transition)
+        allow(issues).to receive(:pr_comment)
+        allow(claude).to receive(:run_agent).with('implementer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('reviewer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('merger', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                            .and_return(block_audit)
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'view', '--json', 'number', chdir: '/project')
+          .and_return(['{"number":99}', '', instance_double(Process::Status, success?: true)])
+      end
+
+      it 'treats BLOCK keyword as findings' do
+        runner.run
+
+        expect(issues).to have_received(:transition)
+          .with(42, from: 'in-progress', to: 'auto-pending-human')
+      end
+    end
+
+    context 'single mode + audit + clean' do
+      subject(:runner) { described_class.new(config: config, options: { single: 42 }) }
+
+      before do
+        allow(config).to receive(:audit_mode).and_return(true)
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:transition)
+        allow(claude).to receive(:run_agent).with('implementer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('reviewer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('merger', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                            .and_return(clean_audit)
+      end
+
+      it 'proceeds with normal auto-merge' do
+        runner.run
+
+        expect(claude).to have_received(:run_agent)
+          .with('merger', /Create a PR, merge it, and close issue #42/, chdir: '/project')
+        expect(issues).to have_received(:transition)
+          .with(42, from: 'in-progress', to: 'completed')
+      end
+    end
+
+    context 'single mode + audit + manual-review + findings' do
+      subject(:runner) { described_class.new(config: config, options: { single: 42 }) }
+
+      before do
+        allow(config).to receive(:audit_mode).and_return(true)
+        allow(config).to receive(:manual_review).and_return(true)
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:transition)
+        allow(issues).to receive(:pr_comment)
+        allow(claude).to receive(:run_agent).with('implementer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('reviewer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('merger', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                            .and_return(findings_audit)
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'view', '--json', 'number', chdir: '/project')
+          .and_return(['{"number":99}', '', instance_double(Process::Status, success?: true)])
+      end
+
+      it 'creates PR and posts audit comment' do
+        runner.run
+
+        expect(issues).to have_received(:transition)
+          .with(42, from: 'in-progress', to: 'auto-pending-human')
+        expect(issues).to have_received(:pr_comment).with(99, /Audit Report/)
+      end
+    end
+
+    context 'single mode + audit + manual-review + clean' do
+      subject(:runner) { described_class.new(config: config, options: { single: 42 }) }
+
+      before do
+        allow(config).to receive(:audit_mode).and_return(true)
+        allow(config).to receive(:manual_review).and_return(true)
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:transition)
+        allow(claude).to receive(:run_agent).with('implementer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('reviewer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('merger', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                            .and_return(clean_audit)
+      end
+
+      it 'creates PR without audit comment (manual-review behavior)' do
+        runner.run
+
+        expect(claude).to have_received(:run_agent)
+          .with('merger', /do NOT merge.*do NOT close/i, chdir: '/project')
+        expect(issues).to have_received(:transition)
+          .with(42, from: 'in-progress', to: 'auto-pending-human')
+      end
+    end
+
+    context 'single mode + audit agent failure' do
+      subject(:runner) { described_class.new(config: config, options: { single: 42 }) }
+
+      before do
+        allow(config).to receive(:audit_mode).and_return(true)
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:transition)
+        allow(issues).to receive(:pr_comment)
+        allow(claude).to receive(:run_agent).with('implementer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('reviewer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('merger', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                            .and_return(failed_audit)
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'view', '--json', 'number', chdir: '/project')
+          .and_return(['{"number":99}', '', instance_double(Process::Status, success?: true)])
+      end
+
+      it 'treats audit failure as findings — creates PR' do
+        runner.run
+
+        expect(issues).to have_received(:transition)
+          .with(42, from: 'in-progress', to: 'auto-pending-human')
+        expect(issues).to have_received(:pr_comment).with(99, /Audit Report/)
+      end
+    end
+
+    context 'single mode + audit + findings + PR lookup fails' do
+      subject(:runner) { described_class.new(config: config, options: { single: 42 }) }
+
+      before do
+        allow(config).to receive(:audit_mode).and_return(true)
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:transition)
+        allow(issues).to receive(:pr_comment)
+        allow(claude).to receive(:run_agent).with('implementer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('reviewer', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('merger', anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                            .and_return(findings_audit)
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'view', '--json', 'number', chdir: '/project')
+          .and_return(['', '', instance_double(Process::Status, success?: false)])
+      end
+
+      it 'transitions to awaiting review but does not post PR comment' do
+        runner.run
+
+        expect(issues).to have_received(:transition)
+          .with(42, from: 'in-progress', to: 'auto-pending-human')
+        expect(issues).not_to have_received(:pr_comment)
+      end
+
+      it 'logs a warning about the missing PR' do
+        runner.run
+
+        expect(logger).to have_received(:warn).with(/Could not find PR to post audit comment/)
+      end
+    end
+
+    context 'batch mode + audit + findings' do
+      subject(:runner) { described_class.new(config: config, options: { once: true }) }
+
+      let(:worktree) do
+        Ocak::WorktreeManager::Worktree.new(
+          path: '/project/.claude/worktrees/issue-1',
+          branch: 'auto/issue-1-abc',
+          issue_number: 1
+        )
+      end
+      let(:worktree_manager) do
+        instance_double(Ocak::WorktreeManager, clean_stale: [], create: worktree, remove: nil)
+      end
+      let(:merger) { instance_double(Ocak::MergeManager) }
+
+      before do
+        allow(config).to receive(:audit_mode).and_return(true)
+        allow(Ocak::WorktreeManager).to receive(:new).and_return(worktree_manager)
+        allow(Ocak::MergeManager).to receive(:new).and_return(merger)
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:fetch_ready).and_return([{ 'number' => 1, 'title' => 'A' }])
+        allow(issues).to receive(:transition)
+        allow(issues).to receive(:comment)
+        allow(issues).to receive(:pr_comment)
+        allow(claude).to receive(:run_agent).with(anything, anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                            .and_return(findings_audit)
+        allow(merger).to receive(:create_pr_only).and_return(55)
+      end
+
+      it 'creates PR and posts audit comment' do
+        runner.run
+
+        expect(merger).to have_received(:create_pr_only).with(1, worktree)
+        expect(issues).to have_received(:pr_comment).with(55, /Audit Report/)
+        expect(issues).to have_received(:transition)
+          .with(1, from: 'in-progress', to: 'auto-pending-human')
+      end
+    end
+
+    context 'batch mode + audit + clean' do
+      subject(:runner) { described_class.new(config: config, options: { once: true }) }
+
+      let(:worktree) do
+        Ocak::WorktreeManager::Worktree.new(
+          path: '/project/.claude/worktrees/issue-1',
+          branch: 'auto/issue-1-abc',
+          issue_number: 1
+        )
+      end
+      let(:worktree_manager) do
+        instance_double(Ocak::WorktreeManager, clean_stale: [], create: worktree, remove: nil)
+      end
+      let(:merger) { instance_double(Ocak::MergeManager) }
+
+      before do
+        allow(config).to receive(:audit_mode).and_return(true)
+        allow(Ocak::WorktreeManager).to receive(:new).and_return(worktree_manager)
+        allow(Ocak::MergeManager).to receive(:new).and_return(merger)
+        allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+        allow(issues).to receive(:fetch_ready).and_return([{ 'number' => 1, 'title' => 'A' }])
+        allow(issues).to receive(:transition)
+        allow(issues).to receive(:comment)
+        allow(claude).to receive(:run_agent).with(anything, anything, chdir: anything)
+                                            .and_return(success_result)
+        allow(claude).to receive(:run_agent).with('auditor', anything, chdir: anything)
+                                            .and_return(clean_audit)
+        allow(merger).to receive(:merge).and_return(true)
+      end
+
+      it 'proceeds with normal merge' do
+        runner.run
+
+        expect(merger).to have_received(:merge).with(1, worktree)
+        expect(issues).to have_received(:transition)
+          .with(1, from: 'in-progress', to: 'completed')
       end
     end
   end
