@@ -45,7 +45,36 @@ RSpec.describe Ocak::ClaudeRunner do
 
         result = runner.run_agent('reviewer', 'Review code')
         expect(result.success?).to be true
-        expect(result.output).to eq('All good')
+      end
+
+      it 'returns full text blocks in output instead of truncated result' do
+        text_json = JSON.generate(type: 'assistant', message: {
+                                    content: [{ 'type' => 'text', 'text' => 'full review text here' }]
+                                  })
+        result_json = JSON.generate(type: 'result', subtype: 'success', result: 'summary',
+                                    total_cost_usd: 0.01, duration_ms: 5000, num_turns: 2)
+
+        allow(Ocak::ProcessRunner).to receive(:run) do |_cmd, **opts|
+          opts[:on_line]&.call(text_json)
+          opts[:on_line]&.call(result_json)
+          ['', '', instance_double(Process::Status, success?: true)]
+        end
+
+        result = runner.run_agent('reviewer', 'Review code')
+        expect(result.output).to eq('full review text here')
+      end
+
+      it 'falls back to result_text when no text blocks are present' do
+        result_json = JSON.generate(type: 'result', subtype: 'success', result: 'result only',
+                                    total_cost_usd: 0.01, duration_ms: 5000, num_turns: 2)
+
+        allow(Ocak::ProcessRunner).to receive(:run) do |_cmd, **opts|
+          opts[:on_line]&.call(result_json)
+          ['', '', instance_double(Process::Status, success?: true)]
+        end
+
+        result = runner.run_agent('reviewer', 'Review code')
+        expect(result.output).to eq('result only')
       end
 
       it 'passes --model flag for agents with configured models' do

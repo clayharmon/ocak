@@ -23,6 +23,11 @@ module Ocak
       @success = nil
       @files_edited = []
       @pending_tools = {}
+      @full_text_blocks = []
+    end
+
+    def full_output
+      @full_text_blocks.join("\n")
     end
 
     def success?
@@ -71,6 +76,7 @@ module Ocak
 
     def parse_text_block(block)
       text = block['text'].to_s
+      @full_text_blocks << text
       has_red    = text.include?("\u{1F534}")
       has_yellow = text.include?("\u{1F7E1}")
       has_green  = text.include?("\u{1F7E2}")
@@ -118,9 +124,12 @@ module Ocak
     def build_read_tool_event(tool_name, input)
       case tool_name
       when 'Read'
-        { category: :tool_call, tool: tool_name, detail: input['file_path'].to_s }
+        detail = input['file_path'].to_s
+        @logger.debug("[READ] #{detail}", agent: @agent_name)
+        { category: :tool_call, tool: tool_name, detail: detail }
       when 'Glob', 'Grep'
         pattern = (input['pattern'] || input['glob']).to_s
+        @logger.debug("[#{tool_name.upcase}] #{pattern}", agent: @agent_name)
         { category: :tool_call, tool: tool_name, detail: pattern }
       else
         { category: :tool_call, tool: tool_name, detail: '' }

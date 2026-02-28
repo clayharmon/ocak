@@ -9,10 +9,10 @@ RSpec.describe Ocak::Planner do
   end
 
   describe '#build_step_prompt' do
-    it 'returns fix prompt with review output for fix role' do
+    it 'returns fix prompt with review output wrapped in XML tags for fix role' do
       prompt = host.build_step_prompt('fix', 42, 'Found bugs')
 
-      expect(prompt).to eq("Fix these review findings for issue #42:\n\nFound bugs")
+      expect(prompt).to eq("Fix these review findings for issue #42:\n\n<review_output>\nFound bugs\n</review_output>")
     end
 
     it 'returns formatted prompt for known roles' do
