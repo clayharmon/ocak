@@ -9,3 +9,4 @@
 # Ocak pipeline
 logs/pipeline/
 .ocak/logs/
+.ocak/reports/

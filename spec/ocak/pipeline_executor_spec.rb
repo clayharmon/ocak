@@ -31,8 +31,11 @@ RSpec.describe Ocak::PipelineExecutor do
 
   subject(:executor) { described_class.new(config: config) }
 
+  let(:run_report) { instance_double(Ocak::RunReport, record_step: nil, finish: nil, save: nil) }
+
   before do
     allow(Ocak::PipelineState).to receive(:new).and_return(pipeline_state)
+    allow(Ocak::RunReport).to receive(:new).and_return(run_report)
     allow(Open3).to receive(:capture3)
       .with('git', 'rev-parse', '--abbrev-ref', 'HEAD', chdir: anything)
       .and_return(["main\n", '', instance_double(Process::Status, success?: true)])
@@ -792,6 +795,66 @@ RSpec.describe Ocak::PipelineExecutor do
 
     it 'works without shutdown_check (nil)' do
       allow(claude).to receive(:run_agent).and_return(success_result)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(result[:success]).to be true
+    end
+  end
+
+  describe 'run report integration' do
+    it 'creates a RunReport and saves it on success' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(Ocak::RunReport).to have_received(:new).with(complexity: 'full')
+      expect(run_report).to have_received(:finish).with(success: true, failed_phase: nil)
+      expect(run_report).to have_received(:save).with(42, project_dir: '/project')
+    end
+
+    it 'records completed steps in the report' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(run_report).to have_received(:record_step)
+        .with(index: 0, agent: 'implementer', role: 'implement', status: 'completed', result: success_result)
+      expect(run_report).to have_received(:record_step)
+        .with(index: 1, agent: 'reviewer', role: 'review', status: 'completed', result: success_result)
+    end
+
+    it 'records skipped steps in the report' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(run_report).to have_received(:record_step)
+        .with(index: 2, agent: 'implementer', role: 'fix', status: 'skipped',
+              skip_reason: 'no blocking findings from review')
+    end
+
+    it 'saves report with failed_phase on failure' do
+      allow(claude).to receive(:run_agent).with('implementer', anything, chdir: anything)
+                                          .and_return(failure_result)
+
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(run_report).to have_received(:finish).with(success: false, failed_phase: 'implement')
+      expect(run_report).to have_received(:save).with(42, project_dir: '/project')
+    end
+
+    it 'passes complexity to RunReport' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      executor.run_pipeline(42, logger: logger, claude: claude, complexity: 'simple')
+
+      expect(Ocak::RunReport).to have_received(:new).with(complexity: 'simple')
+    end
+
+    it 'does not crash when report save fails' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(run_report).to receive(:save).and_raise(StandardError, 'disk full')
 
       result = executor.run_pipeline(42, logger: logger, claude: claude)
 
