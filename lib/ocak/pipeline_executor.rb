@@ -130,6 +130,7 @@ module Ocak
       condition = step[:condition]
 
       return 'manual review mode' if step[:role].to_s == 'merge' && @config.manual_review
+      return 'audit mode' if step[:role].to_s == 'merge' && @config.audit_mode
       return 'fast-track issue (simple complexity)' if step[:complexity] == 'full' && state[:complexity] == 'simple'
       if condition == 'has_findings' && !state[:last_review_output]&.include?("\u{1F534}")
         return 'no blocking findings from review'
