@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'open3'
+require 'shellwords'
 require_relative 'git_utils'
 
 module Ocak
@@ -98,7 +99,7 @@ module Ocak
     def run_optional_cmd(cmd)
       return true if cmd.nil? || cmd.empty?
 
-      _, _, status = Open3.capture3(*cmd.split, chdir: @config.project_dir)
+      _, _, status = Open3.capture3(*Shellwords.shellsplit(cmd), chdir: @config.project_dir)
       status.success?
     end
 

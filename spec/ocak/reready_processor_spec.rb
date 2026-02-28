@@ -301,6 +301,70 @@ RSpec.describe Ocak::RereadyProcessor do
       end
     end
 
+    context 'when command contains quoted arguments' do
+      let(:config_quoted) do
+        instance_double(Ocak::Config,
+                        project_dir: '/project',
+                        label_reready: 'auto-reready',
+                        test_command: 'pytest --config "my config.ini"',
+                        lint_check_command: nil)
+      end
+
+      let(:quoted_processor) do
+        described_class.new(config: config_quoted, logger: logger, claude: claude, issues: issues)
+      end
+
+      before do
+        allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
+        allow(issues).to receive(:fetch_pr_comments).and_return({ comments: [], reviews: [] })
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title,body')
+          .and_return({ 'title' => 'Fix bug', 'body' => 'desc' })
+
+        # Checkout
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'auto/issue-42-abc123', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'checkout', 'auto/issue-42-abc123', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'pull', '--rebase', 'origin', 'auto/issue-42-abc123', chdir: '/project')
+          .and_return(['', '', success_status])
+
+        allow(claude).to receive(:run_agent).and_return(success_result)
+
+        # Verification — quoted argument kept intact by Shellwords.shellsplit
+        allow(Open3).to receive(:capture3)
+          .with('pytest', '--config', 'my config.ini', chdir: '/project')
+          .and_return(['', '', success_status])
+
+        # Push
+        allow(Open3).to receive(:capture3)
+          .with('git', 'status', '--porcelain', chdir: '/project')
+          .and_return(["M file.rb\n", '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'add', '-A', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'commit', '-m', 'fix: address review feedback', chdir: '/project')
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '--force-with-lease', chdir: '/project')
+          .and_return(['', '', success_status])
+
+        allow(issues).to receive(:pr_transition).and_return(true)
+        allow(issues).to receive(:pr_comment).and_return(true)
+      end
+
+      it 'splits quoted arguments correctly via Shellwords' do
+        expect(quoted_processor.process(pr)).to be true
+
+        expect(Open3).to have_received(:capture3)
+          .with('pytest', '--config', 'my config.ini', chdir: '/project')
+      end
+    end
+
     context 'when cleanup checkout to main fails' do
       before do
         allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
