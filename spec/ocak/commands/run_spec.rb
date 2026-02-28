@@ -68,6 +68,22 @@ RSpec.describe Ocak::Commands::Run do
     )
   end
 
+  it 'overrides audit_mode from CLI options' do
+    allow(config).to receive(:override)
+
+    command.call(audit: true)
+
+    expect(config).to have_received(:override).with(:audit_mode, true)
+  end
+
+  it 'overrides manual_review from CLI options' do
+    allow(config).to receive(:override)
+
+    command.call(manual_review: true)
+
+    expect(config).to have_received(:override).with(:manual_review, true)
+  end
+
   it 'exits with error on ConfigNotFound' do
     allow(Ocak::Config).to receive(:load).and_raise(Ocak::Config::ConfigNotFound, 'not found')
 

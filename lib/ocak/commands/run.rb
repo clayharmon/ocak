@@ -21,6 +21,8 @@ module Ocak
       option :poll_interval, type: :integer, desc: 'Seconds between polls'
       option :manual_review, type: :boolean, default: false,
                              desc: 'Create PRs without auto-merge; wait for human review'
+      option :audit, type: :boolean, default: false,
+                     desc: 'Run auditor as post-pipeline gate; create PR with findings if issues found'
 
       def call(**options)
         config = Config.load
@@ -29,6 +31,7 @@ module Ocak
         config.override(:max_parallel, options[:max_parallel]) if options[:max_parallel]
         config.override(:poll_interval, options[:poll_interval]) if options[:poll_interval]
         config.override(:manual_review, true) if options[:manual_review]
+        config.override(:audit_mode, true) if options[:audit]
 
         runner = PipelineRunner.new(
           config: config,
