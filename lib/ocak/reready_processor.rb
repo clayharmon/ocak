@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'open3'
+require_relative 'git_utils'
 
 module Ocak
   class RereadyProcessor
@@ -113,15 +114,12 @@ module Ocak
     end
 
     def push_updates
-      _, _, add_status = Open3.capture3('git', 'add', '-A', chdir: @config.project_dir)
-      return false unless add_status.success?
-
-      stdout, _, porcelain_status = Open3.capture3('git', 'status', '--porcelain', chdir: @config.project_dir)
-      if porcelain_status.success? && !stdout.strip.empty?
-        _, _, commit_status = Open3.capture3('git', 'commit', '-m', 'fix: address review feedback',
-                                             chdir: @config.project_dir)
-        return false unless commit_status.success?
-      end
+      committed = GitUtils.commit_changes(
+        chdir: @config.project_dir,
+        message: 'fix: address review feedback',
+        logger: @logger
+      )
+      @logger.warn('Proceeding to push without new commit') unless committed
 
       _, _, push_status = Open3.capture3('git', 'push', '--force-with-lease', chdir: @config.project_dir)
       push_status.success?
