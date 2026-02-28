@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require 'open3'
-require 'json'
 
 module Ocak
   class RereadyProcessor
@@ -50,14 +49,7 @@ module Ocak
     end
 
     def fetch_issue(issue_number)
-      stdout, _, status = Open3.capture3('gh', 'issue', 'view', issue_number.to_s,
-                                         '--json', 'title,body',
-                                         chdir: @config.project_dir)
-      return nil unless status.success?
-
-      JSON.parse(stdout)
-    rescue JSON::ParserError
-      nil
+      @issues.view(issue_number, fields: 'title,body')
     end
 
     def checkout_pr_branch(branch_name)

@@ -62,9 +62,9 @@ RSpec.describe Ocak::RereadyProcessor do
       before do
         allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
         allow(issues).to receive(:fetch_pr_comments).and_return({ comments: [], reviews: [] })
-        allow(Open3).to receive(:capture3)
-          .with('gh', 'issue', 'view', '42', '--json', 'title,body', chdir: '/project')
-          .and_return(['', 'not found', failure_status])
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title,body')
+          .and_return(nil)
       end
 
       it 'returns false' do
@@ -76,9 +76,9 @@ RSpec.describe Ocak::RereadyProcessor do
       before do
         allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
         allow(issues).to receive(:fetch_pr_comments).and_return({ comments: [], reviews: [] })
-        allow(Open3).to receive(:capture3)
-          .with('gh', 'issue', 'view', '42', '--json', 'title,body', chdir: '/project')
-          .and_return([JSON.generate({ 'title' => 'Fix bug', 'body' => 'desc' }), '', success_status])
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title,body')
+          .and_return({ 'title' => 'Fix bug', 'body' => 'desc' })
 
         allow(Open3).to receive(:capture3)
           .with('git', 'fetch', 'origin', 'auto/issue-42-abc123', chdir: '/project')
@@ -99,9 +99,9 @@ RSpec.describe Ocak::RereadyProcessor do
                                                                                'body' => 'fix this' }],
                                                                   reviews: []
                                                                 })
-        allow(Open3).to receive(:capture3)
-          .with('gh', 'issue', 'view', '42', '--json', 'title,body', chdir: '/project')
-          .and_return([JSON.generate({ 'title' => 'Fix bug', 'body' => 'desc' }), '', success_status])
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title,body')
+          .and_return({ 'title' => 'Fix bug', 'body' => 'desc' })
 
         # Checkout
         allow(Open3).to receive(:capture3)
@@ -166,9 +166,9 @@ RSpec.describe Ocak::RereadyProcessor do
       before do
         allow(issues).to receive(:extract_issue_number_from_pr).and_return(42)
         allow(issues).to receive(:fetch_pr_comments).and_return({ comments: [], reviews: [] })
-        allow(Open3).to receive(:capture3)
-          .with('gh', 'issue', 'view', '42', '--json', 'title,body', chdir: '/project')
-          .and_return([JSON.generate({ 'title' => 'Fix bug', 'body' => 'desc' }), '', success_status])
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title,body')
+          .and_return({ 'title' => 'Fix bug', 'body' => 'desc' })
 
         # Checkout succeeds
         allow(Open3).to receive(:capture3)
