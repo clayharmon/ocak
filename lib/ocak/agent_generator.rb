@@ -109,7 +109,7 @@ module Ocak
         agent_path = File.join(output_dir, "#{output_name}.md")
         current_content = File.read(agent_path)
 
-        prompt = build_enhancement_prompt(agent, current_content, context)
+        prompt = build_enhancement_prompt(current_content, context)
         result = run_claude_prompt(prompt)
 
         if result && !result.strip.empty? && result.include?('---')
@@ -131,7 +131,7 @@ module Ocak
       parts.join("\n\n")
     end
 
-    def build_enhancement_prompt(_agent, template_content, context)
+    def build_enhancement_prompt(template_content, context)
       <<~PROMPT
         You are customizing a Claude Code agent for a specific project.
 
