@@ -160,7 +160,7 @@ module Ocak
       pipeline_state.save(ctx.issue_number,
                           completed_steps: ctx.state[:completed_steps],
                           worktree_path: ctx.chdir,
-                          branch: current_branch(ctx.chdir))
+                          branch: current_branch(ctx.chdir, logger: ctx.logger))
     end
 
     def write_step_output(issue_number, idx, agent, output)
@@ -266,10 +266,11 @@ module Ocak
       @pipeline_state ||= PipelineState.new(log_dir: File.join(@config.project_dir, @config.log_dir))
     end
 
-    def current_branch(chdir)
+    def current_branch(chdir, logger: nil)
       stdout, = Open3.capture3('git', 'rev-parse', '--abbrev-ref', 'HEAD', chdir: chdir)
       stdout.strip
-    rescue StandardError
+    rescue StandardError => e
+      logger&.debug("Could not determine current branch: #{e.message}")
       nil
     end
 

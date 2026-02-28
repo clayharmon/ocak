@@ -21,7 +21,7 @@ RSpec.describe Ocak::PipelineExecutor do
                     ])
   end
 
-  let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, log_file_path: nil) }
+  let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, debug: nil, log_file_path: nil) }
   let(:claude) { instance_double(Ocak::ClaudeRunner) }
   let(:pipeline_state) { instance_double(Ocak::PipelineState, save: nil, delete: nil, load: nil) }
 
@@ -85,6 +85,17 @@ RSpec.describe Ocak::PipelineExecutor do
       executor.run_pipeline(42, logger: logger, claude: claude)
 
       expect(pipeline_state).to have_received(:save).at_least(:twice)
+    end
+
+    it 'logs debug message when current_branch fails' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(Open3).to receive(:capture3)
+        .with('git', 'rev-parse', '--abbrev-ref', 'HEAD', chdir: anything)
+        .and_raise(Errno::ENOENT, 'No such file or directory - git')
+
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(logger).to have_received(:debug).with(/Could not determine current branch/).at_least(:once)
     end
 
     it 'skips already-completed steps' do
