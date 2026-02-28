@@ -64,7 +64,7 @@ RSpec.describe Ocak::Commands::Run do
 
     expect(Ocak::PipelineRunner).to have_received(:new).with(
       config: config,
-      options: { watch: true, single: 42, dry_run: true, once: true, log_level: :normal }
+      options: { watch: true, single: 42, dry_run: true, once: true, fast: nil, log_level: :normal }
     )
   end
 
@@ -117,6 +117,24 @@ RSpec.describe Ocak::Commands::Run do
     expect(Ocak::PipelineRunner).to have_received(:new).with(
       config: config,
       options: hash_including(log_level: :quiet)
+    )
+  end
+
+  it 'passes fast flag in options to PipelineRunner' do
+    command.call(fast: true)
+
+    expect(Ocak::PipelineRunner).to have_received(:new).with(
+      config: config,
+      options: hash_including(fast: true)
+    )
+  end
+
+  it 'defaults fast flag to nil when not specified' do
+    command.call
+
+    expect(Ocak::PipelineRunner).to have_received(:new).with(
+      config: config,
+      options: hash_including(fast: nil)
     )
   end
 

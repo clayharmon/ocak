@@ -74,7 +74,8 @@ module Ocak
       end
 
       issues.transition(issue_number, from: @config.label_ready, to: @config.label_in_progress)
-      result = run_pipeline(issue_number, logger: logger, claude: claude)
+      complexity = @options[:fast] ? 'simple' : 'full'
+      result = run_pipeline(issue_number, logger: logger, claude: claude, complexity: complexity)
 
       if result[:interrupted]
         handle_interrupted_issue(issue_number, nil, result[:phase], logger: logger, issues: issues)
@@ -179,8 +180,9 @@ module Ocak
       worktree = worktrees.create(issue_number, setup_command: @config.setup_command)
       logger.info("Created worktree at #{worktree.path} (branch: #{worktree.branch})")
 
+      complexity = @options[:fast] ? 'simple' : issue.fetch('complexity', 'full')
       result = run_pipeline(issue_number, logger: logger, claude: claude, chdir: worktree.path,
-                                          complexity: issue.fetch('complexity', 'full'))
+                                          complexity: complexity)
 
       build_issue_result(result, issue_number: issue_number, worktree: worktree, issues: issues,
                                  logger: logger)

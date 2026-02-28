@@ -205,13 +205,20 @@ RSpec.describe Ocak::Config do
   describe '#steps' do
     it 'returns default steps when none configured' do
       config = described_class.new({}, dir)
-      expect(config.steps.size).to eq(8)
+      expect(config.steps.size).to eq(9)
       expect(config.steps.first).to include(agent: 'implementer', role: 'implement')
     end
 
-    it 'does not include audit step in default steps' do
+    it 'includes audit step in default steps with full complexity' do
       config = described_class.new({}, dir)
-      expect(config.steps.none? { |s| s[:role] == 'audit' }).to be true
+      audit_step = config.steps.find { |s| s[:role] == 'audit' }
+      expect(audit_step).to include(agent: 'auditor', role: 'audit', complexity: 'full')
+    end
+
+    it 'includes security step in default steps with full complexity' do
+      config = described_class.new({}, dir)
+      security_step = config.steps.find { |s| s[:role] == 'security' }
+      expect(security_step).to include(agent: 'security-reviewer', role: 'security', complexity: 'full')
     end
 
     it 'returns configured steps' do
