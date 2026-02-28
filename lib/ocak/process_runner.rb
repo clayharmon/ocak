@@ -66,8 +66,7 @@ module Ocak
         else
           ctx[:stderr] << chunk
         end
-      rescue EOFError => e
-        warn("Stream EOF for subprocess IO: #{e.message}")
+      rescue EOFError
         readers.delete(io)
       end
     end
