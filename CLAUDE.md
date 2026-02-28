@@ -40,7 +40,7 @@ lib/ocak/templates/
 - **No heavy dependencies** — stdlib only (open3, json, yaml, erb, fileutils, logger, securerandom) plus dry-cli
 - **ERB templates** use `trim_mode: "-"` for clean output
 - **Config** is always loaded from `ocak.yml` in the project root via `Config.load`
-- Agent names use hyphens in filenames (`security-reviewer.md`) but underscores in Ruby (`security_reviewer`)
+- Agent names use hyphens in filenames (`security-reviewer.md`) and in `ocak.yml` step definitions (`security-reviewer`); Ruby identifiers use underscores. `pipeline_executor.rb` converts underscores to hyphens for backwards compatibility with existing user configs.
 - All external commands (git, gh, claude) go through `Open3.capture3` or `Open3.popen3`
 
 ## Key Patterns
