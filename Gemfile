@@ -6,6 +6,6 @@ gemspec
 
 group :development, :test do
   gem 'rake', '~> 13.0'
-  gem 'rspec', '~> 3.0'
-  gem 'rubocop', '~> 1.0', require: false
+  gem 'rspec', '~> 3.13'
+  gem 'rubocop', '~> 1.85', require: false
 end
