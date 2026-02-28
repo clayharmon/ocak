@@ -5,6 +5,8 @@ require 'open3'
 module Ocak
   # Runs a subprocess with streaming line output and timeout support.
   module ProcessRunner
+    KILL_GRACE_PERIOD = 2
+
     FailedStatus = Struct.new(:success?) do
       def self.instance = new(false)
     end
@@ -54,7 +56,7 @@ module Ocak
 
     def kill_process(pid)
       Process.kill('TERM', pid)
-      sleep 2
+      sleep KILL_GRACE_PERIOD
       Process.kill('KILL', pid)
     rescue Errno::ESRCH, Errno::EPERM => e
       warn("Process already exited during kill: #{e.message}")

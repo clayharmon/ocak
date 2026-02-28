@@ -211,11 +211,7 @@ module Ocak
       end
 
       def init_logger
-        @init_logger ||= Object.new.tap do |l|
-          def l.info(msg)
-            puts "  #{msg}"
-          end
-        end
+        @init_logger ||= Struct.new(:_) { def info(msg) = puts("  #{msg}") }.new
       end
     end
   end
