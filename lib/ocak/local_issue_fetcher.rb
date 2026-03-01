@@ -133,7 +133,7 @@ module Ocak
       fm = YAML.safe_load(parts[1]) || {}
       yield fm
 
-      File.write(path, "---\n#{YAML.dump(fm)}---\n#{parts[2]}")
+      File.write(path, "---\n#{dump_frontmatter(fm)}---\n#{parts[2]}")
     rescue StandardError => e
       @logger&.warn("LocalIssueFetcher#update_frontmatter failed for ##{issue_number}: #{e.message}")
       nil
@@ -153,8 +153,13 @@ module Ocak
       (issue['labels'] || []).map { |l| l['name'] }
     end
 
+    def dump_frontmatter(hash)
+      # YAML.dump prepends "---\n"; we manage our own delimiters
+      YAML.dump(hash).delete_prefix("---\n")
+    end
+
     def build_file(frontmatter, body)
-      "---\n#{YAML.dump(frontmatter)}---\n\n#{body}\n"
+      "---\n#{dump_frontmatter(frontmatter)}---\n\n#{body}\n"
     end
   end
 end
