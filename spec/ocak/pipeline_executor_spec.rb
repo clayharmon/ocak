@@ -765,6 +765,15 @@ RSpec.describe Ocak::PipelineExecutor do
       expect(File.exist?(sidecar)).to be false
     end
 
+    it 'rejects non-numeric issue numbers in sidecar path' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      executor.run_pipeline('../etc', logger: logger, claude: claude, chdir: dir)
+
+      sidecar_dir = File.join(dir, '.ocak', 'logs', 'issue-../etc')
+      expect(Dir.exist?(sidecar_dir)).to be false
+    end
+
     it 'sanitizes role name to prevent path traversal in sidecar filename' do
       traversal_steps = [
         { 'agent' => 'implementer', 'role' => '../../etc/evil' }

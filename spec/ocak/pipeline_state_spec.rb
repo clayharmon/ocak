@@ -66,6 +66,34 @@ RSpec.describe Ocak::PipelineState do
     end
   end
 
+  describe 'issue_number validation' do
+    it 'rejects non-numeric issue numbers on save' do
+      expect(state.save('../etc', completed_steps: [0])).to be_nil
+    end
+
+    it 'rejects non-numeric issue numbers on load' do
+      expect(state.load('../etc')).to be_nil
+    end
+
+    it 'rejects non-numeric issue numbers on delete' do
+      expect { state.delete('../etc') }.not_to raise_error
+    end
+
+    it 'accepts integer issue numbers' do
+      state.save(42, completed_steps: [0])
+      expect(state.load(42)).not_to be_nil
+    end
+
+    it 'accepts string-encoded integer issue numbers' do
+      state.save('42', completed_steps: [0])
+      expect(state.load('42')).not_to be_nil
+    end
+
+    it 'rejects issue numbers with path traversal characters' do
+      expect(state.save('42/../99', completed_steps: [0])).to be_nil
+    end
+  end
+
   describe '#delete' do
     it 'removes the state file' do
       state.save(42, completed_steps: [0])

@@ -30,7 +30,7 @@ module Ocak
       return nil unless File.exist?(path)
 
       JSON.parse(File.read(path), symbolize_names: true)
-    rescue JSON::ParserError => e
+    rescue ArgumentError, JSON::ParserError => e
       warn("Failed to parse pipeline state for issue ##{issue_number}: #{e.message}")
       nil
     end
@@ -38,6 +38,8 @@ module Ocak
     def delete(issue_number)
       path = state_path(issue_number)
       FileUtils.rm_f(path)
+    rescue ArgumentError
+      nil
     end
 
     def list
@@ -52,6 +54,8 @@ module Ocak
     private
 
     def state_path(issue_number)
+      raise ArgumentError, "Invalid issue number: #{issue_number}" unless issue_number.to_s.match?(/\A\d+\z/)
+
       File.join(@log_dir, "issue-#{issue_number}-state.json")
     end
   end

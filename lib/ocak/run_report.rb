@@ -41,6 +41,8 @@ module Ocak
     end
 
     def save(issue_number, project_dir:)
+      return nil unless issue_number.to_s.match?(/\A\d+\z/)
+
       dir = File.join(project_dir, REPORTS_DIR)
       FileUtils.mkdir_p(dir)
 
