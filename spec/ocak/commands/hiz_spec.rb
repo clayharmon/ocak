@@ -559,6 +559,48 @@ RSpec.describe Ocak::Commands::Hiz do
     end
   end
 
+
+  describe 'review step accounting' do
+    let(:impl_result) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Implemented', cost_usd: 0.10) }
+    let(:review_result) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Reviewed', cost_usd: 0.05) }
+    let(:security_result) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Secure', cost_usd: 0.03) }
+
+    before do
+      allow(claude).to receive(:run_agent)
+        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .and_return(impl_result)
+      allow(claude).to receive(:run_agent)
+        .with('reviewer', anything, chdir: '/project', model: 'haiku')
+        .and_return(review_result)
+      allow(claude).to receive(:run_agent)
+        .with('security-reviewer', anything, chdir: '/project', model: 'sonnet')
+        .and_return(security_result)
+      allow(issues).to receive(:view).with(42).and_return(nil)
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
+              '--head', anything, chdir: '/project')
+        .and_return(["https://github.com/org/repo/pull/1\n", '', success_status])
+    end
+
+    it 'accumulates steps_run and total_cost from all three agents' do
+      command.call(issue: '42')
+
+      expect(issues).to have_received(:comment)
+        .with(42, %r{\*\*Pipeline complete\*\*.*3/3 steps run.*\$0\.18 total})
+    end
+
+    it 'accumulates costs correctly when one review thread fails' do
+      allow(claude).to receive(:run_agent)
+        .with('reviewer', anything, chdir: '/project', model: 'haiku')
+        .and_raise(StandardError, 'connection reset')
+
+      command.call(issue: '42')
+
+      # Only implementer (0.10) + security (0.03) = 0.13; steps_run = 2
+      expect(issues).to have_received(:comment)
+        .with(42, %r{\*\*Pipeline complete\*\*.*2/3 steps run.*\$0\.13 total})
+    end
+  end
   describe 'label transitions' do
     it 'transitions from label_ready to label_in_progress at pipeline start' do
       allow(claude).to receive(:run_agent).and_return(success_result)
