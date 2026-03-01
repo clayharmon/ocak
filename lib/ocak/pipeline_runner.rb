@@ -169,6 +169,9 @@ module Ocak
       rescue StandardError => e
         logger.warn("Failed to clean worktree for ##{result[:issue_number]}: #{e.message}")
       end
+
+      programming_error = results.find { |r| r[:programming_error] }&.dig(:programming_error)
+      raise programming_error if programming_error
     end
 
     def process_one_issue(issue, worktrees:, issues:)
@@ -191,9 +194,11 @@ module Ocak
       build_issue_result(result, issue_number: issue_number, worktree: worktree, issues: issues,
                                  logger: logger)
     rescue StandardError => e
-      logger.error("Unexpected error: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
-      issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
-      { issue_number: issue_number, success: false, worktree: worktree, error: e.message }
+      handle_process_error(e, issue_number: issue_number, logger: logger, issues: issues)
+      result = { issue_number: issue_number, success: false, worktree: worktree, error: e.message }
+      # NameError includes NoMethodError
+      result[:programming_error] = e if e.is_a?(NameError) || e.is_a?(TypeError)
+      result
     ensure
       @active_mutex.synchronize { @active_issues.delete(issue_number) }
     end
@@ -261,6 +266,17 @@ module Ocak
       @shutting_down = true
       warn "\nForce shutdown — killing active processes..."
       @registry.kill_all
+    end
+
+    def handle_process_error(error, issue_number:, logger:, issues:)
+      logger.error("Unexpected #{error.class}: #{error.message}\n#{error.backtrace&.first(5)&.join("\n")}")
+      logger.debug("Full backtrace:\n#{error.backtrace&.join("\n")}")
+      issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
+      begin
+        issues.comment(issue_number, "Unexpected #{error.class}: #{error.message}")
+      rescue StandardError
+        nil
+      end
     end
 
     def handle_interrupted_issue(issue_number, worktree_path, step_name, logger:, issues:)

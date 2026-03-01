@@ -1051,6 +1051,121 @@ RSpec.describe Ocak::PipelineRunner do
 
       expect(issues).to have_received(:transition).with(1, from: 'in-progress', to: 'pipeline-failed')
     end
+
+    it 'includes error class name in the failure comment' do
+      allow(claude).to receive(:run_agent).and_raise(RuntimeError, 'kaboom')
+
+      runner.run
+
+      expect(issues).to have_received(:comment).with(1, 'Unexpected RuntimeError: kaboom')
+    end
+
+    it 'includes error class name in the log message' do
+      allow(claude).to receive(:run_agent).and_raise(RuntimeError, 'kaboom')
+
+      runner.run
+
+      expect(logger).to have_received(:error).with(/Unexpected RuntimeError: kaboom/)
+    end
+
+    it 'logs full backtrace at debug level' do
+      allow(claude).to receive(:run_agent).and_raise(RuntimeError, 'kaboom')
+
+      runner.run
+
+      expect(logger).to have_received(:debug).with(/Full backtrace:.*pipeline_runner/m)
+    end
+
+    it 're-raises NameError after cleanup' do
+      allow(claude).to receive(:run_agent).and_raise(NoMethodError, 'undefined method')
+
+      expect { runner.run }.to raise_error(NoMethodError, 'undefined method')
+      expect(issues).to have_received(:transition).with(1, from: 'in-progress', to: 'pipeline-failed')
+      expect(issues).to have_received(:comment).with(1, /NoMethodError/)
+    end
+
+    it 're-raises TypeError after cleanup' do
+      allow(claude).to receive(:run_agent).and_raise(TypeError, 'no implicit conversion')
+
+      expect { runner.run }.to raise_error(TypeError, 'no implicit conversion')
+      expect(issues).to have_received(:transition).with(1, from: 'in-progress', to: 'pipeline-failed')
+      expect(issues).to have_received(:comment).with(1, /TypeError/)
+    end
+
+    it 'does not re-raise recoverable StandardError' do
+      allow(claude).to receive(:run_agent).and_raise(RuntimeError, 'network timeout')
+
+      expect { runner.run }.not_to raise_error
+      expect(issues).to have_received(:transition).with(1, from: 'in-progress', to: 'pipeline-failed')
+    end
+
+    it 'returns error result when issues.comment raises during handle_process_error' do
+      allow(claude).to receive(:run_agent).and_raise(RuntimeError, 'original error')
+      allow(issues).to receive(:comment).and_raise(StandardError, 'GitHub API down')
+
+      expect { runner.run }.not_to raise_error
+      expect(issues).to have_received(:transition).with(1, from: 'in-progress', to: 'pipeline-failed')
+    end
+  end
+
+  describe 'multi-issue batch with programming error' do
+    subject(:runner) { described_class.new(config: config, options: { once: true }) }
+
+    let(:worktree1) do
+      Ocak::WorktreeManager::Worktree.new(
+        path: '/project/.claude/worktrees/issue-1',
+        branch: 'auto/issue-1-abc',
+        issue_number: 1
+      )
+    end
+    let(:worktree2) do
+      Ocak::WorktreeManager::Worktree.new(
+        path: '/project/.claude/worktrees/issue-2',
+        branch: 'auto/issue-2-def',
+        issue_number: 2
+      )
+    end
+    let(:worktree_manager) { instance_double(Ocak::WorktreeManager, clean_stale: []) }
+    let(:merger) { instance_double(Ocak::MergeManager) }
+
+    before do
+      allow(Ocak::WorktreeManager).to receive(:new).and_return(worktree_manager)
+      allow(Ocak::MergeManager).to receive(:new).and_return(merger)
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(issues).to receive(:fetch_ready).and_return([
+                                                          { 'number' => 1, 'title' => 'A' },
+                                                          { 'number' => 2, 'title' => 'B' }
+                                                        ])
+      allow(issues).to receive(:transition)
+      allow(issues).to receive(:comment)
+      allow(worktree_manager).to receive(:remove)
+      allow(worktree_manager).to receive(:create) do |num, **_opts|
+        num == 1 ? worktree1 : worktree2
+      end
+    end
+
+    it 'cleans up all worktrees and merges successful issues before re-raising' do
+      planner_output = '{"batches": [{"batch": 1, "issues": [' \
+                       '{"number": 1, "title": "A", "complexity": "full"}, ' \
+                       '{"number": 2, "title": "B", "complexity": "full"}]}]}'
+      planner_result = Ocak::ClaudeRunner::AgentResult.new(success: true, output: planner_output)
+
+      allow(claude).to receive(:run_agent) do |agent, prompt, **_opts|
+        if agent == 'planner'
+          planner_result
+        elsif prompt.include?('#1')
+          raise NameError, 'undefined local variable'
+        else
+          success_result
+        end
+      end
+      allow(merger).to receive(:merge).and_return(true)
+
+      expect { runner.run }.to raise_error(NameError, 'undefined local variable')
+      expect(worktree_manager).to have_received(:remove).with(worktree1)
+      expect(worktree_manager).to have_received(:remove).with(worktree2)
+      expect(merger).to have_received(:merge).with(2, worktree2)
+    end
   end
 
   describe 'cleanup_stale_worktrees error' do
