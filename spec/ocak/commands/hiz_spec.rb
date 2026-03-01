@@ -597,7 +597,6 @@ RSpec.describe Ocak::Commands::Hiz do
     end
   end
 
-
   describe 'review step accounting' do
     let(:impl_result) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Implemented', cost_usd: 0.10) }
     let(:review_result) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Reviewed', cost_usd: 0.05) }
