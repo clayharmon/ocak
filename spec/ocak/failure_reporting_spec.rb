@@ -48,6 +48,16 @@ RSpec.describe Ocak::FailureReporting do
     end
   end
 
+  it 'escapes triple backticks in output to prevent markdown injection' do
+    result = { phase: 'implement', output: 'before ```injected``` after' }
+
+    includer.report_pipeline_failure(42, result, issues: issues, config: config)
+
+    expect(issues).to have_received(:comment).with(
+      42, "Pipeline failed at phase: implement\n\n```\nbefore '''injected''' after\n```"
+    )
+  end
+
   it 'does not raise when comment fails' do
     allow(issues).to receive(:comment).and_raise(StandardError, 'GitHub API down')
     result = { phase: 'implement', output: 'error' }

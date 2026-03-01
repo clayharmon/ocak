@@ -6,8 +6,9 @@ module Ocak
   module FailureReporting
     def report_pipeline_failure(issue_number, result, issues:, config:)
       issues.transition(issue_number, from: config.label_in_progress, to: config.label_failed)
+      sanitized = result[:output][0..1000].to_s.gsub('```', "'''")
       issues.comment(issue_number,
-                     "Pipeline failed at phase: #{result[:phase]}\n\n```\n#{result[:output][0..1000]}\n```")
+                     "Pipeline failed at phase: #{result[:phase]}\n\n```\n#{sanitized}\n```")
     rescue StandardError
       nil
     end
