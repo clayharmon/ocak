@@ -165,6 +165,9 @@ module Ocak
       rescue StandardError => e
         logger.warn("Failed to clean worktree for ##{result[:issue_number]}: #{e.message}")
       end
+
+      programming_error = results.find { |r| r[:programming_error] }&.dig(:programming_error)
+      raise programming_error if programming_error
     end
 
     def process_one_issue(issue, worktrees:, issues:)
@@ -188,7 +191,10 @@ module Ocak
                                  logger: logger)
     rescue StandardError => e
       handle_process_error(e, issue_number: issue_number, logger: logger, issues: issues)
-      { issue_number: issue_number, success: false, worktree: worktree, error: e.message }
+      result = { issue_number: issue_number, success: false, worktree: worktree, error: e.message }
+      # NameError includes NoMethodError
+      result[:programming_error] = e if e.is_a?(NameError) || e.is_a?(TypeError)
+      result
     ensure
       @active_mutex.synchronize { @active_issues.delete(issue_number) }
     end
@@ -262,8 +268,11 @@ module Ocak
       logger.error("Unexpected #{error.class}: #{error.message}\n#{error.backtrace&.first(5)&.join("\n")}")
       logger.debug("Full backtrace:\n#{error.backtrace&.join("\n")}")
       issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
-      issues.comment(issue_number, "Unexpected #{error.class}: #{error.message}")
-      raise error if error.is_a?(NameError) || error.is_a?(TypeError)
+      begin
+        issues.comment(issue_number, "Unexpected #{error.class}: #{error.message}")
+      rescue StandardError
+        nil
+      end
     end
 
     def handle_interrupted_issue(issue_number, worktree_path, step_name, logger:, issues:)
