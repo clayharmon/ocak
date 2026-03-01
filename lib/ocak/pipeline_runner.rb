@@ -141,7 +141,7 @@ module Ocak
     end
 
     def run_batch(batch_issues, logger:, issues:)
-      worktrees = WorktreeManager.new(config: @config)
+      worktrees = WorktreeManager.new(config: @config, logger: logger)
 
       threads = batch_issues.map do |issue|
         Thread.new { process_one_issue(issue, worktrees: worktrees, issues: issues) }
@@ -226,7 +226,7 @@ module Ocak
     end
 
     def cleanup_stale_worktrees(logger)
-      worktrees = WorktreeManager.new(config: @config)
+      worktrees = WorktreeManager.new(config: @config, logger: logger)
       removed = worktrees.clean_stale
       removed.each { |path| logger.info("Cleaned stale worktree: #{path}") }
     rescue StandardError => e
