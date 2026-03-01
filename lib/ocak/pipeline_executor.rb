@@ -166,6 +166,7 @@ module Ocak
 
     def write_step_output(issue_number, idx, agent, output)
       return if output.to_s.empty?
+      return unless issue_number.to_s.match?(/\A\d+\z/)
 
       safe_agent = agent.to_s.gsub(/[^a-zA-Z0-9_-]/, '')
       dir = File.join(@config.project_dir, '.ocak', 'logs', "issue-#{issue_number}")

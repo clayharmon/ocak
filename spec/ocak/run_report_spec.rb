@@ -88,6 +88,25 @@ RSpec.describe Ocak::RunReport do
       expect(data[:complexity]).to eq('full')
     end
 
+    it 'rejects non-numeric issue numbers' do
+      report.finish(success: true)
+
+      expect(report.save('../etc', project_dir: dir)).to be_nil
+    end
+
+    it 'rejects issue numbers with path traversal characters' do
+      report.finish(success: true)
+
+      expect(report.save('42/../99', project_dir: dir)).to be_nil
+    end
+
+    it 'accepts integer issue numbers' do
+      report.finish(success: true)
+
+      path = report.save(42, project_dir: dir)
+      expect(File.exist?(path)).to be true
+    end
+
     it 'creates the reports directory if missing' do
       report.finish(success: true)
       path = report.save(42, project_dir: dir)
