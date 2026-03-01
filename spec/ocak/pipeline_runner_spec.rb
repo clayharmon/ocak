@@ -1045,7 +1045,7 @@ RSpec.describe Ocak::PipelineRunner do
     end
 
     it 'transitions to failed label on unexpected error' do
-      allow(claude).to receive(:run_agent).and_raise(StandardError, 'kaboom')
+      allow(claude).to receive(:run_agent).and_raise(RuntimeError, 'kaboom')
 
       runner.run
 
