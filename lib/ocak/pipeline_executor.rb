@@ -24,15 +24,20 @@ module Ocak
       @shutdown_check = shutdown_check
     end
 
-    def run_pipeline(issue_number, logger:, claude:, chdir: nil, skip_steps: [], complexity: 'full')
+    def run_pipeline(issue_number, logger:, claude:, chdir: nil, skip_steps: [], complexity: 'full', # rubocop:disable Metrics/ParameterLists
+                     steps: nil, verification_model: nil,
+                     post_start_comment: true, post_summary_comment: true)
       @logger = logger
+      @custom_steps = steps
+      @verification_model = verification_model
+      @post_summary_comment = post_summary_comment
       chdir ||= @config.project_dir
       logger.info("=== Starting pipeline for issue ##{issue_number} (#{complexity}) ===")
 
       report = RunReport.new(complexity: complexity)
       state = build_initial_state(complexity, report)
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      post_pipeline_start_comment(issue_number, state)
+      post_pipeline_start_comment(issue_number, state) if post_start_comment
 
       failure = run_pipeline_steps(issue_number, state, logger: logger, claude: claude, chdir: chdir,
                                                         skip_steps: skip_steps)
@@ -53,7 +58,7 @@ module Ocak
     def build_initial_state(complexity, report)
       { last_review_output: nil, had_fixes: false, completed_steps: [], total_cost: 0.0,
         complexity: complexity, steps_run: 0, steps_skipped: 0,
-        audit_output: nil, audit_blocked: false, report: report }
+        audit_output: nil, audit_blocked: false, report: report, step_results: {} }
     end
 
     def handle_interrupted(issue_number, state, report, logger)
@@ -70,27 +75,32 @@ module Ocak
     def finish_success(issue_number, state, report, start_time, logger)
       duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
       save_report(report, issue_number, success: true)
-      post_pipeline_summary_comment(issue_number, state, duration, success: true)
+      post_pipeline_summary_comment(issue_number, state, duration, success: true) if @post_summary_comment
       logger.info("=== Pipeline complete for issue ##{issue_number} ===")
       { success: true, output: 'Pipeline completed successfully',
-        audit_blocked: state[:audit_blocked], audit_output: state[:audit_output] }
+        audit_blocked: state[:audit_blocked], audit_output: state[:audit_output],
+        step_results: state[:step_results], total_cost: state[:total_cost], steps_run: state[:steps_run] }
     end
 
     def build_interrupted_result(state)
-      last_step = state[:completed_steps].any? ? @config.steps[state[:completed_steps].last] : nil
+      last_step = state[:completed_steps].any? ? active_steps[state[:completed_steps].last] : nil
       last_role = last_step ? symbolize(last_step)[:role].to_s : 'startup'
-      { success: false, phase: last_role, output: 'Pipeline interrupted', interrupted: true }
+      { success: false, phase: last_role, output: 'Pipeline interrupted', interrupted: true,
+        step_results: state[:step_results], total_cost: state[:total_cost], steps_run: state[:steps_run] }
     end
 
     def post_failure_and_return(issue_number, state, failure, start_time)
       duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
-      post_pipeline_summary_comment(issue_number, state, duration, success: false,
-                                                                   failed_phase: failure[:phase])
-      failure
+      if @post_summary_comment
+        post_pipeline_summary_comment(issue_number, state, duration, success: false,
+                                                                     failed_phase: failure[:phase])
+      end
+      failure.merge(step_results: state[:step_results], total_cost: state[:total_cost],
+                    steps_run: state[:steps_run])
     end
 
     def run_pipeline_steps(issue_number, state, logger:, claude:, chdir:, skip_steps: [])
-      @config.steps.each_with_index do |step, idx|
+      active_steps.each_with_index do |step, idx|
         break if check_shutdown(state, logger)
 
         step = symbolize(step)
@@ -148,15 +158,20 @@ module Ocak
     end
 
     def record_step_result(ctx)
-      update_pipeline_state(ctx.role, ctx.result, ctx.state)
-      ctx.state[:completed_steps] << ctx.idx
-      ctx.state[:steps_run] += 1
-      ctx.state[:total_cost] += ctx.result.cost_usd.to_f
+      accumulate_state(ctx)
       save_step_progress(ctx)
       write_step_output(ctx.issue_number, ctx.idx, ctx.role, ctx.result.output)
       post_step_completion_comment(ctx.issue_number, ctx.role, ctx.result)
 
       check_step_failure(ctx) || check_cost_budget(ctx.state, ctx.logger)
+    end
+
+    def accumulate_state(ctx)
+      update_pipeline_state(ctx.role, ctx.result, ctx.state)
+      ctx.state[:completed_steps] << ctx.idx
+      ctx.state[:steps_run] += 1
+      ctx.state[:total_cost] += ctx.result.cost_usd.to_f
+      ctx.state[:step_results][ctx.role] = ctx.result
     end
 
     def save_step_progress(ctx)
@@ -226,7 +241,8 @@ module Ocak
     end
 
     def run_final_verification(issue_number, logger:, claude:, chdir:)
-      run_verification_with_retry(logger: logger, claude: claude, chdir: chdir) do |body|
+      run_verification_with_retry(logger: logger, claude: claude, chdir: chdir,
+                                  model: @verification_model) do |body|
         post_step_comment(issue_number, body)
       end
     end
@@ -259,8 +275,12 @@ module Ocak
       nil
     end
 
+    def active_steps
+      @custom_steps || @config.steps
+    end
+
     def post_pipeline_start_comment(issue_number, state)
-      total = @config.steps.size
+      total = active_steps.size
       conditional = conditional_step_count(state)
       post_step_comment(issue_number,
                         "\u{1F680} **Pipeline started** \u2014 complexity: `#{state[:complexity]}` " \
@@ -268,7 +288,7 @@ module Ocak
     end
 
     def post_pipeline_summary_comment(issue_number, state, duration, success:, failed_phase: nil)
-      total = @config.steps.size
+      total = active_steps.size
       cost = format('%.2f', state[:total_cost])
 
       if success
@@ -283,7 +303,7 @@ module Ocak
     end
 
     def conditional_step_count(state)
-      @config.steps.count do |step|
+      active_steps.count do |step|
         step = symbolize(step)
         step[:condition] ||
           (step[:complexity] == 'full' && state[:complexity] == 'simple') ||

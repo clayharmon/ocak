@@ -987,4 +987,146 @@ RSpec.describe Ocak::PipelineExecutor do
       expect(logger).to have_received(:debug).with('Report save failed: disk full')
     end
   end
+
+  describe 'custom steps parameter' do
+    let(:custom_steps) do
+      [
+        { agent: 'implementer', role: 'implement', model: 'sonnet' },
+        { agent: 'reviewer', role: 'review', model: 'haiku' }
+      ]
+    end
+
+    it 'uses custom steps instead of config steps' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude, steps: custom_steps)
+
+      expect(result[:success]).to be true
+      expect(claude).to have_received(:run_agent)
+        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+      expect(claude).to have_received(:run_agent)
+        .with('reviewer', anything, chdir: '/project', model: 'haiku')
+    end
+
+    it 'does not run config steps when custom steps are provided' do
+      custom = [{ agent: 'implementer', role: 'implement' }]
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      executor.run_pipeline(42, logger: logger, claude: claude, steps: custom)
+
+      expect(claude).to have_received(:run_agent).once
+    end
+
+    it 'falls back to config steps when steps: nil' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(claude).to have_received(:run_agent).with('implementer', anything, chdir: anything)
+      expect(claude).to have_received(:run_agent).with('reviewer', anything, chdir: anything)
+    end
+  end
+
+  describe 'step_results in return value' do
+    let(:impl_result) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Implemented', cost_usd: 0.10) }
+    let(:review_result) { Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Reviewed', cost_usd: 0.05) }
+
+    it 'includes step_results keyed by role on success' do
+      allow(claude).to receive(:run_agent).with('implementer', anything, chdir: anything)
+                                          .and_return(impl_result)
+      allow(claude).to receive(:run_agent).with('reviewer', anything, chdir: anything)
+                                          .and_return(review_result)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(result[:step_results]['implement']).to eq(impl_result)
+      expect(result[:step_results]['review']).to eq(review_result)
+    end
+
+    it 'includes step_results on failure' do
+      allow(claude).to receive(:run_agent).with('implementer', anything, chdir: anything)
+                                          .and_return(Ocak::ClaudeRunner::AgentResult.new(
+                                                        success: false, output: 'Error', cost_usd: 0.05
+                                                      ))
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(result[:step_results]['implement']).not_to be_nil
+    end
+
+    it 'includes total_cost and steps_run on success' do
+      allow(claude).to receive(:run_agent).and_return(impl_result)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(result[:total_cost]).to be > 0
+      expect(result[:steps_run]).to be >= 1
+    end
+  end
+
+  describe 'comment suppression' do
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
+
+    before do
+      allow(issues_fetcher).to receive(:comment)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+    end
+
+    it 'suppresses start comment when post_start_comment: false' do
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude, post_start_comment: false)
+
+      expect(issues_fetcher).not_to have_received(:comment)
+        .with(42, /Pipeline started/)
+    end
+
+    it 'suppresses summary comment when post_summary_comment: false' do
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude, post_summary_comment: false)
+
+      expect(issues_fetcher).not_to have_received(:comment)
+        .with(42, /Pipeline complete/)
+    end
+
+    it 'still posts step comments when start/summary are suppressed' do
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude,
+                                            post_start_comment: false, post_summary_comment: false)
+
+      expect(issues_fetcher).to have_received(:comment)
+        .with(42, /\u{1F504} \*\*Phase: implement\*\*/)
+    end
+  end
+
+  describe 'verification_model parameter' do
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
+
+    before do
+      allow(issues_fetcher).to receive(:comment)
+      allow(config).to receive(:test_command).and_return('bundle exec rspec')
+      allow(config).to receive(:lint_check_command).and_return(nil)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+    end
+
+    it 'passes verification_model to the fix attempt' do
+      allow(Open3).to receive(:capture3)
+        .with('bundle', 'exec', 'rspec', chdir: '/project')
+        .and_return(['FAIL', '', instance_double(Process::Status, success?: false)])
+
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude, verification_model: 'sonnet')
+
+      expect(claude).to have_received(:run_agent)
+        .with('implementer', match(/Fix these/), chdir: '/project', model: 'sonnet')
+    end
+
+    it 'does not pass model when verification_model is nil' do
+      allow(Open3).to receive(:capture3)
+        .with('bundle', 'exec', 'rspec', chdir: '/project')
+        .and_return(['FAIL', '', instance_double(Process::Status, success?: false)])
+
+      executor_with_issues.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(claude).to have_received(:run_agent)
+        .with('implementer', match(/Fix these/), chdir: '/project')
+    end
+  end
 end
