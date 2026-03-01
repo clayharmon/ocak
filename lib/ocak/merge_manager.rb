@@ -180,13 +180,14 @@ module Ocak
       return true unless test_cmd
 
       @logger.info('Running tests after rebase...')
-      _, _, status = shell(test_cmd, chdir: worktree.path)
+      stdout, stderr, status = shell(test_cmd, chdir: worktree.path)
 
       if status.success?
         @logger.info('Tests passed after rebase')
         true
       else
         @logger.warn('Tests failed after rebase')
+        @logger.debug("Test output:\n#{stdout[0..2000]}\n#{stderr[0..500]}")
         false
       end
     end
