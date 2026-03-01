@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative '../config'
+require_relative '../failure_reporting'
 require_relative '../git_utils'
 require_relative '../pipeline_runner'
 require_relative '../pipeline_state'
@@ -13,6 +14,8 @@ require_relative '../logger'
 module Ocak
   module Commands
     class Resume < Dry::CLI::Command
+      include FailureReporting
+
       desc 'Resume a failed pipeline from the last successful step'
 
       argument :issue, type: :integer, required: true, desc: 'Issue number to resume'
@@ -93,10 +96,7 @@ module Ocak
         if result[:success]
           attempt_merge(ctx)
         else
-          ctx[:issues].transition(ctx[:issue_number], from: ctx[:config].label_in_progress,
-                                                      to: ctx[:config].label_failed)
-          ctx[:issues].comment(ctx[:issue_number],
-                               "Pipeline failed at phase: #{result[:phase]}\n\n```\n#{result[:output][0..1000]}\n```")
+          report_pipeline_failure(ctx[:issue_number], result, issues: ctx[:issues], config: ctx[:config])
           warn "Issue ##{ctx[:issue_number]} failed again at phase: #{result[:phase]}"
         end
       end

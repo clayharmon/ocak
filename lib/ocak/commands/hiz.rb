@@ -244,8 +244,9 @@ module Ocak
         logger.error("Issue ##{issue_number} failed at phase: #{phase}")
         issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
         begin
+          sanitized = output.to_s[0..1000].gsub('```', "'''")
           issues.comment(issue_number,
-                         "Hiz (fast mode) failed at phase: #{phase}\n\n```\n#{output.to_s[0..1000]}\n```")
+                         "Hiz (fast mode) failed at phase: #{phase}\n\n```\n#{sanitized}\n```")
         rescue StandardError
           nil
         end

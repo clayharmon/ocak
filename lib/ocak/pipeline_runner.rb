@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative 'failure_reporting'
 require_relative 'merge_orchestration'
 require_relative 'pipeline_executor'
 require_relative 'process_registry'
@@ -8,6 +9,7 @@ require_relative 'reready_processor'
 
 module Ocak
   class PipelineRunner
+    include FailureReporting
     include MergeOrchestration
 
     attr_reader :registry
@@ -82,9 +84,7 @@ module Ocak
       elsif result[:success]
         handle_single_success(issue_number, result, logger: logger, claude: claude, issues: issues)
       else
-        issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
-        issues.comment(issue_number,
-                       "Pipeline failed at phase: #{result[:phase]}\n\n```\n#{result[:output][0..1000]}\n```")
+        report_pipeline_failure(issue_number, result, issues: issues, config: @config)
         logger.error("Issue ##{issue_number} failed at phase: #{result[:phase]}")
       end
     end
@@ -212,9 +212,7 @@ module Ocak
         { issue_number: issue_number, success: true, worktree: worktree,
           audit_blocked: result[:audit_blocked], audit_output: result[:audit_output] }
       else
-        issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
-        issues.comment(issue_number,
-                       "Pipeline failed at phase: #{result[:phase]}\n\n```\n#{result[:output][0..1000]}\n```")
+        report_pipeline_failure(issue_number, result, issues: issues, config: @config)
         { issue_number: issue_number, success: false, worktree: worktree }
       end
     end
