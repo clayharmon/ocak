@@ -3,6 +3,7 @@
 require 'erb'
 require 'fileutils'
 require 'open3'
+require_relative 'claude_runner'
 
 module Ocak
   class AgentGenerator
@@ -161,7 +162,7 @@ module Ocak
       stdout, _, status = Open3.capture3(
         'claude', '-p',
         '--output-format', 'text',
-        '--model', 'haiku',
+        '--model', ClaudeRunner::MODEL_HAIKU,
         '--allowedTools', 'Read,Glob,Grep',
         '--', prompt,
         chdir: @project_dir

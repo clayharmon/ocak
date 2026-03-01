@@ -81,13 +81,14 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(claude).to have_received(:run_agent)
-        .with('implementer', 'Implement GitHub issue #42', chdir: '/project', model: 'sonnet')
+        .with('implementer', 'Implement GitHub issue #42', chdir: '/project',
+                                                           model: 'us.anthropic.claude-sonnet-4-6-v1')
       expect(claude).to have_received(:run_agent)
         .with('reviewer', 'Review the changes for GitHub issue #42. Run: git diff main',
-              chdir: '/project', model: 'haiku')
+              chdir: '/project', model: 'us.anthropic.claude-haiku-4-5-20251001')
       expect(claude).to have_received(:run_agent)
         .with('security-reviewer', 'Security review changes for GitHub issue #42. Run: git diff main',
-              chdir: '/project', model: 'sonnet')
+              chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
     end
 
     it 'creates a branch with hiz/ prefix' do
@@ -116,7 +117,7 @@ RSpec.describe Ocak::Commands::Hiz do
   context 'when implementation fails' do
     before do
       allow(claude).to receive(:run_agent)
-        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .with('implementer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
         .and_return(failure_result)
     end
 
@@ -153,7 +154,7 @@ RSpec.describe Ocak::Commands::Hiz do
   context 'when branch deletion fails after pipeline failure' do
     before do
       allow(claude).to receive(:run_agent)
-        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .with('implementer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
         .and_return(failure_result)
       allow(Open3).to receive(:capture3)
         .with('git', 'branch', '-D', anything, chdir: '/project')
@@ -171,7 +172,7 @@ RSpec.describe Ocak::Commands::Hiz do
     before do
       allow(claude).to receive(:run_agent).and_return(success_result)
       allow(claude).to receive(:run_agent)
-        .with('reviewer', anything, chdir: '/project', model: 'haiku')
+        .with('reviewer', anything, chdir: '/project', model: 'us.anthropic.claude-haiku-4-5-20251001')
         .and_return(failure_result)
       allow(issues).to receive(:view).with(42).and_return(nil)
       allow(Open3).to receive(:capture3)
@@ -184,7 +185,7 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(claude).to have_received(:run_agent)
-        .with('security-reviewer', anything, chdir: '/project', model: 'sonnet')
+        .with('security-reviewer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
     end
 
     it 'still creates a PR' do
@@ -200,7 +201,7 @@ RSpec.describe Ocak::Commands::Hiz do
     before do
       allow(claude).to receive(:run_agent).and_return(success_result)
       allow(claude).to receive(:run_agent)
-        .with('reviewer', anything, chdir: '/project', model: 'haiku')
+        .with('reviewer', anything, chdir: '/project', model: 'us.anthropic.claude-haiku-4-5-20251001')
         .and_raise(StandardError, 'connection reset')
       allow(issues).to receive(:view).with(42).and_return(nil)
       allow(Open3).to receive(:capture3)
@@ -214,7 +215,7 @@ RSpec.describe Ocak::Commands::Hiz do
 
       expect(logger).to have_received(:error).with(/review thread failed: connection reset/)
       expect(claude).to have_received(:run_agent)
-        .with('security-reviewer', anything, chdir: '/project', model: 'sonnet')
+        .with('security-reviewer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
     end
   end
 
@@ -232,9 +233,9 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(claude).to have_received(:run_agent)
-        .with('reviewer', anything, chdir: '/project', model: 'haiku')
+        .with('reviewer', anything, chdir: '/project', model: 'us.anthropic.claude-haiku-4-5-20251001')
       expect(claude).to have_received(:run_agent)
-        .with('security-reviewer', anything, chdir: '/project', model: 'sonnet')
+        .with('security-reviewer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
     end
   end
 
@@ -327,7 +328,8 @@ RSpec.describe Ocak::Commands::Hiz do
 
       # Fix attempt with sonnet
       expect(claude).to have_received(:run_agent)
-        .with('implementer', match(%r{Fix these test/lint failures}), chdir: '/project', model: 'sonnet')
+        .with('implementer', match(%r{Fix these test/lint failures}), chdir: '/project',
+                                                                      model: 'us.anthropic.claude-sonnet-4-6-v1')
     end
 
     it 'wraps verification output in XML tags for prompt injection protection' do
@@ -352,7 +354,7 @@ RSpec.describe Ocak::Commands::Hiz do
       expect(claude).to have_received(:run_agent)
         .with('implementer',
               match(%r{<verification_output>.*FAIL.*</verification_output>}m),
-              chdir: '/project', model: 'sonnet')
+              chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
     end
   end
 
@@ -405,7 +407,7 @@ RSpec.describe Ocak::Commands::Hiz do
   context 'when cleanup checkout to main fails' do
     before do
       allow(claude).to receive(:run_agent)
-        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .with('implementer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
         .and_return(failure_result)
       allow(Open3).to receive(:capture3)
         .with('git', 'checkout', 'main', chdir: '/project')
@@ -479,7 +481,7 @@ RSpec.describe Ocak::Commands::Hiz do
 
     it 'posts failure summary when implementation fails' do
       allow(claude).to receive(:run_agent)
-        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .with('implementer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
         .and_return(failure_result)
 
       command.call(issue: '42')
@@ -612,13 +614,13 @@ RSpec.describe Ocak::Commands::Hiz do
 
     before do
       allow(claude).to receive(:run_agent)
-        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .with('implementer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
         .and_return(impl_result)
       allow(claude).to receive(:run_agent)
-        .with('reviewer', anything, chdir: '/project', model: 'haiku')
+        .with('reviewer', anything, chdir: '/project', model: 'us.anthropic.claude-haiku-4-5-20251001')
         .and_return(review_result)
       allow(claude).to receive(:run_agent)
-        .with('security-reviewer', anything, chdir: '/project', model: 'sonnet')
+        .with('security-reviewer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
         .and_return(security_result)
       allow(issues).to receive(:view).with(42).and_return(nil)
       allow(Open3).to receive(:capture3)
@@ -636,7 +638,7 @@ RSpec.describe Ocak::Commands::Hiz do
 
     it 'accumulates costs correctly when one review thread fails' do
       allow(claude).to receive(:run_agent)
-        .with('reviewer', anything, chdir: '/project', model: 'haiku')
+        .with('reviewer', anything, chdir: '/project', model: 'us.anthropic.claude-haiku-4-5-20251001')
         .and_raise(StandardError, 'connection reset')
 
       command.call(issue: '42')
@@ -663,7 +665,7 @@ RSpec.describe Ocak::Commands::Hiz do
 
     it 'transitions from label_in_progress to label_failed on failure' do
       allow(claude).to receive(:run_agent)
-        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .with('implementer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
         .and_return(failure_result)
 
       command.call(issue: '42')
@@ -701,7 +703,7 @@ RSpec.describe Ocak::Commands::Hiz do
 
     it 'transitions to label_failed on failure' do
       allow(claude).to receive(:run_agent)
-        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .with('implementer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
         .and_return(failure_result)
 
       command.call(issue: '42')
@@ -753,7 +755,7 @@ RSpec.describe Ocak::Commands::Hiz do
 
     it 'transitions from label_in_progress to label_failed on failure' do
       allow(claude).to receive(:run_agent)
-        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .with('implementer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
         .and_return(failure_result)
 
       command.call(issue: '42')

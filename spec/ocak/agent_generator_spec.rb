@@ -160,7 +160,7 @@ RSpec.describe Ocak::AgentGenerator do
         allow(Open3).to receive(:capture3).with(
           'claude', '-p',
           '--output-format', 'text',
-          '--model', 'haiku',
+          '--model', 'us.anthropic.claude-haiku-4-5-20251001',
           '--allowedTools', 'Read,Glob,Grep',
           '--', 'test prompt',
           chdir: dir
@@ -173,7 +173,7 @@ RSpec.describe Ocak::AgentGenerator do
         allow(Open3).to receive(:capture3).with(
           'claude', '-p',
           '--output-format', 'text',
-          '--model', 'haiku',
+          '--model', 'us.anthropic.claude-haiku-4-5-20251001',
           '--allowedTools', 'Read,Glob,Grep',
           '--', 'test prompt',
           chdir: dir
@@ -188,7 +188,7 @@ RSpec.describe Ocak::AgentGenerator do
         allow(Open3).to receive(:capture3).with(
           'claude', '-p',
           '--output-format', 'text',
-          '--model', 'haiku',
+          '--model', 'us.anthropic.claude-haiku-4-5-20251001',
           '--allowedTools', 'Read,Glob,Grep',
           '--', 'test prompt',
           chdir: dir
@@ -216,7 +216,7 @@ RSpec.describe Ocak::AgentGenerator do
         allow(Open3).to receive(:capture3).with(
           'claude', '-p',
           '--output-format', 'text',
-          '--model', 'haiku',
+          '--model', 'us.anthropic.claude-haiku-4-5-20251001',
           '--allowedTools', 'Read,Glob,Grep',
           '--', anything,
           chdir: dir
@@ -257,7 +257,7 @@ RSpec.describe Ocak::AgentGenerator do
         allow(Open3).to receive(:capture3).with(
           'claude', '-p',
           '--output-format', 'text',
-          '--model', 'haiku',
+          '--model', 'us.anthropic.claude-haiku-4-5-20251001',
           '--allowedTools', 'Read,Glob,Grep',
           '--', anything,
           chdir: dir
@@ -277,7 +277,7 @@ RSpec.describe Ocak::AgentGenerator do
         allow(Open3).to receive(:capture3).with(
           'claude', '-p',
           '--output-format', 'text',
-          '--model', 'haiku',
+          '--model', 'us.anthropic.claude-haiku-4-5-20251001',
           '--allowedTools', 'Read,Glob,Grep',
           '--', anything,
           chdir: dir

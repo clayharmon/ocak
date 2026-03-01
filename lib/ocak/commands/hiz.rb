@@ -24,9 +24,9 @@ module Ocak
       option :quiet, type: :boolean, default: false, desc: 'Suppress non-error output'
 
       HIZ_STEPS = [
-        { agent: 'implementer', role: 'implement', model: 'sonnet' },
-        { agent: 'reviewer', role: 'review', model: 'haiku', parallel: true },
-        { agent: 'security-reviewer', role: 'security', model: 'sonnet', parallel: true }
+        { agent: 'implementer', role: 'implement', model: ClaudeRunner::MODEL_SONNET },
+        { agent: 'reviewer', role: 'review', model: ClaudeRunner::MODEL_HAIKU, parallel: true },
+        { agent: 'security-reviewer', role: 'security', model: ClaudeRunner::MODEL_SONNET, parallel: true }
       ].freeze
 
       HizState = Struct.new(:issues, :total_cost, :steps_run, :review_results)
@@ -81,7 +81,7 @@ module Ocak
         executor = PipelineExecutor.new(config: @config, issues: issues)
         result = executor.run_pipeline(
           issue_number, logger: logger, claude: claude, chdir: chdir,
-                        steps: HIZ_STEPS, verification_model: 'sonnet',
+                        steps: HIZ_STEPS, verification_model: ClaudeRunner::MODEL_SONNET,
                         post_start_comment: false, post_summary_comment: false
         )
 
