@@ -107,6 +107,28 @@ RSpec.describe Ocak::PipelineExecutor do
       expect(claude).not_to have_received(:run_agent).with('implementer', /Implement/, chdir: anything)
       expect(claude).to have_received(:run_agent).with('reviewer', anything, chdir: anything)
     end
+
+    it 'passes step model override to claude runner' do
+      steps = [
+        { 'agent' => 'implementer', 'role' => 'implement', 'model' => 'sonnet' }
+      ]
+      allow(config).to receive(:steps).and_return(steps)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(claude).to have_received(:run_agent)
+        .with('implementer', anything, chdir: anything, model: 'sonnet')
+    end
+
+    it 'does not pass model when step has no model override' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      executor.run_pipeline(42, logger: logger, claude: claude)
+
+      expect(claude).to have_received(:run_agent)
+        .with('implementer', anything, chdir: '/project')
+    end
   end
 
   describe 'step conditions' do

@@ -142,7 +142,9 @@ module Ocak
       logger.info("--- Phase: #{role} (#{agent}) ---")
       post_step_comment(issue_number, "\u{1F504} **Phase: #{role}** (#{agent})")
       prompt = build_step_prompt(role, issue_number, review_output)
-      claude.run_agent(agent.tr('_', '-'), prompt, chdir: chdir)
+      opts = { chdir: chdir }
+      opts[:model] = step[:model].to_s if step[:model]
+      claude.run_agent(agent.tr('_', '-'), prompt, **opts)
     end
 
     def record_step_result(ctx)
