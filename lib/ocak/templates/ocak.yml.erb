@@ -27,6 +27,12 @@ stack:
 <%- end -%>
 <%- end -%>
 
+# Issue backend — 'github' (default) or 'local'
+# Local mode stores issues as files in .ocak/issues/ (no gh CLI needed for issues).
+# Auto-detected: if .ocak/issues/ contains .md files, local mode is used automatically.
+# issues:
+#   backend: local
+
 # Pipeline settings
 pipeline:
   max_parallel: 5

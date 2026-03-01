@@ -183,6 +183,11 @@ module Ocak
 
       def create_labels(project_dir)
         config = Config.load(project_dir)
+        if config.local_issues?
+          puts '  Skipped label creation (local issue backend)'
+          return
+        end
+
         fetcher = IssueFetcher.new(config: config)
         fetcher.ensure_labels(config.all_labels)
         puts '  Created GitHub labels'

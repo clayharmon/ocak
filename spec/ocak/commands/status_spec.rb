@@ -17,7 +17,8 @@ RSpec.describe Ocak::Commands::Status do
                     label_ready: 'auto-ready',
                     label_in_progress: 'in-progress',
                     label_completed: 'completed',
-                    label_failed: 'pipeline-failed')
+                    label_failed: 'pipeline-failed',
+                    issue_backend: 'github')
   end
 
   let(:manager) { instance_double(Ocak::WorktreeManager) }

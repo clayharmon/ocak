@@ -3,6 +3,7 @@
 require 'open3'
 require 'json'
 require_relative '../config'
+require_relative '../issue_backend'
 require_relative '../run_report'
 require_relative '../worktree_manager'
 
@@ -42,7 +43,26 @@ module Ocak
 
       def show_issues(config)
         puts 'Issues:'
+        fetcher = IssueBackend.build(config: config)
 
+        if fetcher.is_a?(LocalIssueFetcher)
+          show_local_issues(fetcher, config)
+        else
+          show_github_issues(config)
+        end
+      end
+
+      def show_local_issues(fetcher, config)
+        all = fetcher.all_issues
+        %w[ready in_progress completed failed].each do |state|
+          label = config.send(:"label_#{state}")
+          count = all.count { |i| i['labels']&.any? { |l| l['name'] == label } }
+          icon = { 'ready' => '  ', 'in_progress' => '  ', 'completed' => '  ', 'failed' => '  ' }[state]
+          puts "  #{icon} #{state.tr('_', ' ')}: #{count} (label: #{label})"
+        end
+      end
+
+      def show_github_issues(config)
         %w[ready in_progress completed failed].each do |state|
           label = config.send(:"label_#{state}")
           count = fetch_issue_count(label, config)
