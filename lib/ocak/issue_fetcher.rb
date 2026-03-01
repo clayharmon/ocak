@@ -193,15 +193,19 @@ module Ocak
     def current_user
       return @current_user if defined?(@current_user_resolved)
 
-      stdout, _, status = Open3.capture3('gh', 'api', 'user', '--jq', '.login')
-      if status.success?
-        @current_user = stdout.strip
-        @current_user_resolved = true
-        @current_user
-      else
-        @logger&.warn("Could not determine current user via 'gh api user'")
-        nil
+      2.times do |attempt|
+        stdout, _, status = Open3.capture3('gh', 'api', 'user', '--jq', '.login')
+        if status.success?
+          @current_user = stdout.strip
+          @current_user_resolved = true
+          return @current_user
+        end
+
+        @logger&.warn("Could not determine current user via 'gh api user' (attempt #{attempt + 1}/2)")
+        sleep(1) if attempt.zero?
       end
+
+      nil
     end
 
     def run_gh(*)
