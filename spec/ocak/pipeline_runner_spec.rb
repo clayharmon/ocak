@@ -1027,6 +1027,52 @@ RSpec.describe Ocak::PipelineRunner do
 
       expect(issues).to have_received(:transition).with(1, from: 'in-progress', to: 'pipeline-failed')
     end
+
+    it 'includes error class name in the failure comment' do
+      allow(claude).to receive(:run_agent).and_raise(RuntimeError, 'kaboom')
+
+      runner.run
+
+      expect(issues).to have_received(:comment).with(1, 'Unexpected RuntimeError: kaboom')
+    end
+
+    it 'includes error class name in the log message' do
+      allow(claude).to receive(:run_agent).and_raise(RuntimeError, 'kaboom')
+
+      runner.run
+
+      expect(logger).to have_received(:error).with(/Unexpected RuntimeError: kaboom/)
+    end
+
+    it 'logs full backtrace at debug level' do
+      allow(claude).to receive(:run_agent).and_raise(RuntimeError, 'kaboom')
+
+      runner.run
+
+      expect(logger).to have_received(:debug).with(/Full backtrace:/)
+    end
+
+    it 're-raises NameError after cleanup' do
+      allow(claude).to receive(:run_agent).and_raise(NoMethodError, 'undefined method')
+
+      expect { runner.run }.to raise_error(NoMethodError, 'undefined method')
+      expect(issues).to have_received(:transition).with(1, from: 'in-progress', to: 'pipeline-failed')
+      expect(issues).to have_received(:comment).with(1, /NoMethodError/)
+    end
+
+    it 're-raises TypeError after cleanup' do
+      allow(claude).to receive(:run_agent).and_raise(TypeError, 'no implicit conversion')
+
+      expect { runner.run }.to raise_error(TypeError, 'no implicit conversion')
+      expect(issues).to have_received(:transition).with(1, from: 'in-progress', to: 'pipeline-failed')
+    end
+
+    it 'does not re-raise recoverable StandardError' do
+      allow(claude).to receive(:run_agent).and_raise(RuntimeError, 'network timeout')
+
+      expect { runner.run }.not_to raise_error
+      expect(issues).to have_received(:transition).with(1, from: 'in-progress', to: 'pipeline-failed')
+    end
   end
 
   describe 'cleanup_stale_worktrees error' do

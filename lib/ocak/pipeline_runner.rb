@@ -187,8 +187,7 @@ module Ocak
       build_issue_result(result, issue_number: issue_number, worktree: worktree, issues: issues,
                                  logger: logger)
     rescue StandardError => e
-      logger.error("Unexpected error: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
-      issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
+      handle_process_error(e, issue_number: issue_number, logger: logger, issues: issues)
       { issue_number: issue_number, success: false, worktree: worktree, error: e.message }
     ensure
       @active_mutex.synchronize { @active_issues.delete(issue_number) }
@@ -257,6 +256,14 @@ module Ocak
       @shutting_down = true
       warn "\nForce shutdown — killing active processes..."
       @registry.kill_all
+    end
+
+    def handle_process_error(error, issue_number:, logger:, issues:)
+      logger.error("Unexpected #{error.class}: #{error.message}\n#{error.backtrace&.first(5)&.join("\n")}")
+      logger.debug("Full backtrace:\n#{error.backtrace&.join("\n")}")
+      issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
+      issues.comment(issue_number, "Unexpected #{error.class}: #{error.message}")
+      raise error if error.is_a?(NameError) || error.is_a?(TypeError)
     end
 
     def handle_interrupted_issue(issue_number, worktree_path, step_name, logger:, issues:)
