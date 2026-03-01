@@ -26,6 +26,7 @@ RSpec.describe Ocak::PipelineRunner do
                     lint_check_command: nil,
                     setup_command: nil,
                     language: 'ruby',
+                    issue_backend: 'github',
                     all_labels: %w[auto-ready in-progress completed pipeline-failed auto-reready auto-pending-human],
                     steps: [
                       { 'agent' => 'implementer', 'role' => 'implement' },

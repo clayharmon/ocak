@@ -6,7 +6,7 @@ require_relative '../git_utils'
 require_relative '../pipeline_runner'
 require_relative '../pipeline_state'
 require_relative '../claude_runner'
-require_relative '../issue_fetcher'
+require_relative '../issue_backend'
 require_relative '../worktree_manager'
 require_relative '../merge_manager'
 require_relative '../logger'
@@ -78,7 +78,7 @@ module Ocak
         logger = PipelineLogger.new(log_dir: log_dir, issue_number: issue_number)
         watch_formatter = options[:watch] ? WatchFormatter.new : nil
         claude = ClaudeRunner.new(config: config, logger: logger, watch: watch_formatter)
-        issues = IssueFetcher.new(config: config, logger: logger)
+        issues = IssueBackend.build(config: config, logger: logger)
 
         issues.transition(issue_number, from: config.label_failed, to: config.label_in_progress)
 

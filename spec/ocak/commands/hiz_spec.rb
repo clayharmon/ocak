@@ -18,7 +18,8 @@ RSpec.describe Ocak::Commands::Hiz do
                     label_in_progress: 'auto-doing',
                     label_failed: 'pipeline-failed',
                     language: 'ruby',
-                    cost_budget: nil)
+                    cost_budget: nil,
+                    issue_backend: 'github')
   end
 
   let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, debug: nil, log_file_path: nil) }

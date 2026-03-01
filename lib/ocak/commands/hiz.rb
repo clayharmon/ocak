@@ -5,7 +5,7 @@ require 'securerandom'
 require_relative '../config'
 require_relative '../claude_runner'
 require_relative '../git_utils'
-require_relative '../issue_fetcher'
+require_relative '../issue_backend'
 require_relative '../pipeline_executor'
 require_relative '../step_comments'
 require_relative '../logger'
@@ -43,7 +43,7 @@ module Ocak
         @logger = logger = build_logger(issue_number)
         watch_formatter = options[:watch] ? WatchFormatter.new : nil
         claude = ClaudeRunner.new(config: @config, logger: logger, watch: watch_formatter)
-        issues = IssueFetcher.new(config: @config, logger: logger)
+        issues = IssueBackend.build(config: @config, logger: logger)
 
         logger.info("=== Hiz (fast mode) for issue ##{issue_number} ===")
 

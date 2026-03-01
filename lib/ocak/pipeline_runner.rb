@@ -5,6 +5,7 @@ require_relative 'merge_orchestration'
 require_relative 'pipeline_executor'
 require_relative 'process_registry'
 require_relative 'git_utils'
+require_relative 'issue_backend'
 require_relative 'reready_processor'
 
 module Ocak
@@ -65,7 +66,7 @@ module Ocak
     def run_single(issue_number)
       logger = build_logger(issue_number: issue_number)
       claude = build_claude(logger)
-      issues = IssueFetcher.new(config: @config)
+      issues = IssueBackend.build(config: @config)
       ensure_labels(issues, logger)
       @executor.issues = issues
       logger.info("Running single issue mode for ##{issue_number}")
@@ -91,7 +92,7 @@ module Ocak
 
     def run_loop
       logger = build_logger
-      issues = IssueFetcher.new(config: @config, logger: logger)
+      issues = IssueBackend.build(config: @config, logger: logger)
       ensure_labels(issues, logger)
       @executor.issues = issues
       cleanup_stale_worktrees(logger)
