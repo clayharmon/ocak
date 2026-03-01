@@ -142,9 +142,10 @@ module Ocak
           end
         end
 
+        thread_results = threads.map(&:value)
+
         results = {}
-        threads.each_with_index do |thread, i|
-          result = thread.value
+        thread_results.each_with_index do |result, i|
           step = REVIEW_STEPS[i]
           if result
             state.steps_run += 1
