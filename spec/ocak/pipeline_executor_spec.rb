@@ -777,6 +777,15 @@ RSpec.describe Ocak::PipelineExecutor do
       expect(File.exist?(File.join(dir, '.ocak', 'logs', 'issue-42', 'step-1-review.md'))).to be true
     end
 
+    it 'rejects non-numeric issue numbers in sidecar path' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      executor.run_pipeline('../etc', logger: logger, claude: claude, chdir: dir)
+
+      sidecar_dir = File.join(dir, '.ocak', 'logs', 'issue-../etc')
+      expect(Dir.exist?(sidecar_dir)).to be false
+    end
+
     it 'does not write sidecar file when output is empty' do
       empty_result = Ocak::ClaudeRunner::AgentResult.new(success: true, output: '')
       allow(claude).to receive(:run_agent).and_return(empty_result)
