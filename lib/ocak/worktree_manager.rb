@@ -7,8 +7,9 @@ require 'shellwords'
 
 module Ocak
   class WorktreeManager
-    def initialize(config:)
+    def initialize(config:, logger: nil)
       @config = config
+      @logger = logger
       @worktree_base = File.join(config.project_dir, config.worktree_dir)
       @mutex = Mutex.new
     end
@@ -56,7 +57,8 @@ module Ocak
         begin
           git('worktree', 'remove', '--force', wt[:path])
           removed << wt[:path]
-        rescue StandardError
+        rescue StandardError => e
+          @logger&.warn("Failed to remove worktree #{wt[:path]}: #{e.message}")
           next # skip failed removal so one bad worktree doesn't abort cleanup of others
         end
       end

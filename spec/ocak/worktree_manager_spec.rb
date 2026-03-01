@@ -211,5 +211,31 @@ RSpec.describe Ocak::WorktreeManager do
 
       expect(removed).to eq(['/project/.claude/worktrees/issue-43'])
     end
+
+    it 'logs a warning when a worktree removal fails' do
+      logger = instance_double('Logger', warn: nil)
+      manager_with_logger = described_class.new(config: config, logger: logger)
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'list', '--porcelain', chdir: '/project')
+        .and_return([porcelain_output, '', success_status])
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'remove', '--force', '/project/.claude/worktrees/issue-42', chdir: '/project')
+        .and_raise(Errno::ENOENT, 'No such file or directory')
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'remove', '--force', '/project/.claude/worktrees/issue-43', chdir: '/project')
+        .and_return(['', '', success_status])
+
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'prune', chdir: '/project')
+        .and_return(['', '', success_status])
+
+      manager_with_logger.clean_stale
+
+      expect(logger).to have_received(:warn)
+        .with(a_string_matching(%r{Failed to remove worktree /project/.claude/worktrees/issue-42}))
+    end
   end
 end
