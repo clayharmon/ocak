@@ -12,6 +12,7 @@ stack:
 <%- end -%>
 <%- if lint_command -%>
   lint_command: "<%= lint_command %>"
+  # lint_check_command: "<%= lint_command %>"  # Explicit check-only lint command (no auto-fix flags)
 <%- end -%>
 <%- if setup_command -%>
   setup_command: "<%= setup_command %>"

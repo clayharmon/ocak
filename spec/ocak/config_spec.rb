@@ -87,9 +87,49 @@ RSpec.describe Ocak::Config do
       expect(config.lint_check_command).to eq('cargo clippy')
     end
 
+    it 'strips --unsafe-fix from ruff command' do
+      config = described_class.new({ stack: { lint_command: 'ruff check --fix --unsafe-fix .' } }, dir)
+      expect(config.lint_check_command).to eq('ruff check .')
+    end
+
+    it 'strips --fix-dry-run from eslint command' do
+      config = described_class.new({ stack: { lint_command: 'npx eslint --fix-dry-run .' } }, dir)
+      expect(config.lint_check_command).to eq('npx eslint .')
+    end
+
+    it 'strips --fix-type from eslint command' do
+      config = described_class.new({ stack: { lint_command: 'npx eslint --fix --fix-type suggestion .' } }, dir)
+      expect(config.lint_check_command).to eq('npx eslint suggestion .')
+    end
+
     it 'returns nil when no lint command configured' do
       config = described_class.new({}, dir)
       expect(config.lint_check_command).to be_nil
+    end
+
+    it 'returns explicit lint_check_command when configured' do
+      config = described_class.new({
+                                     stack: {
+                                       lint_command: 'bundle exec rubocop -A',
+                                       lint_check_command: 'bundle exec rubocop --parallel'
+                                     }
+                                   }, dir)
+      expect(config.lint_check_command).to eq('bundle exec rubocop --parallel')
+    end
+
+    it 'prefers explicit lint_check_command over stripping' do
+      config = described_class.new({
+                                     stack: {
+                                       lint_command: 'ruff check --fix --unsafe-fix .',
+                                       lint_check_command: 'ruff check .'
+                                     }
+                                   }, dir)
+      expect(config.lint_check_command).to eq('ruff check .')
+    end
+
+    it 'falls back to stripping when lint_check_command is not set' do
+      config = described_class.new({ stack: { lint_command: 'bundle exec rubocop -A' } }, dir)
+      expect(config.lint_check_command).to eq('bundle exec rubocop')
     end
   end
 

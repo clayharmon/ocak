@@ -34,12 +34,16 @@ module Ocak
     def format_command = dig(:stack, :format_command)
     def setup_command  = dig(:stack, :setup_command)
 
-    # Returns the lint command with auto-fix flags stripped, suitable for check-only verification.
+    # Returns the lint command suitable for check-only verification.
+    # Uses explicit lint_check_command config if provided; otherwise strips known fix flags from lint_command.
     def lint_check_command
+      explicit = dig(:stack, :lint_check_command)
+      return explicit if explicit
+
       cmd = lint_command
       return nil unless cmd
 
-      cmd.gsub(/\s+(?:-A|--fix|--write|--allow-dirty)\b/, '').strip
+      cmd.gsub(/\s+(?:-A|--fix-dry-run|--fix-type|--unsafe-fix|--fix|--write|--allow-dirty)\b/, '').strip
     end
 
     def security_commands
