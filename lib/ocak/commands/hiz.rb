@@ -124,6 +124,8 @@ module Ocak
 
       def create_branch(issue_number, chdir)
         branch = "hiz/issue-#{issue_number}-#{SecureRandom.hex(4)}"
+        raise "Unsafe branch name: #{branch}" unless GitUtils.safe_branch_name?(branch)
+
         _, stderr, status = Open3.capture3('git', 'checkout', '-b', branch, chdir: chdir)
         raise "Failed to create branch #{branch}: #{stderr}" unless status.success?
 

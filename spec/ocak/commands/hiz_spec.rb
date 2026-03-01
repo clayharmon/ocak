@@ -586,6 +586,17 @@ RSpec.describe Ocak::Commands::Hiz do
     end
   end
 
+  describe 'branch name validation' do
+    it 'checks safe_branch_name? before creating the branch' do
+      allow(Ocak::GitUtils).to receive(:safe_branch_name?).and_return(false)
+
+      command.call(issue: '42')
+
+      expect(issues).to have_received(:comment)
+        .with(42, match(/failed at phase: create-branch/))
+    end
+  end
+
   it 'exits with error on ConfigNotFound' do
     allow(Ocak::Config).to receive(:load).and_raise(Ocak::Config::ConfigNotFound, 'not found')
 
