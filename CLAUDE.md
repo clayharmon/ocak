@@ -24,6 +24,7 @@ lib/ocak/
 ├── pipeline_state.rb      # Persists per-issue pipeline progress for resume support
 ├── run_report.rb          # Writes per-run JSON reports to .ocak/reports/; RunReport#record_step, #finish, #save, .load_all
 ├── step_comments.rb       # StepComments module — shared post_step_comment / post_step_completion_comment; included by Hiz and PipelineExecutor
+├── failure_reporting.rb   # FailureReporting module — shared label transition + failure comment posting; included by PipelineRunner and Commands::Resume
 ├── verification.rb        # Final verification checks (tests + scoped lint) extracted module
 ├── process_runner.rb      # Subprocess runner with streaming line output and timeout support
 ├── process_registry.rb    # Thread-safe PID registry for subprocess tracking during shutdown
