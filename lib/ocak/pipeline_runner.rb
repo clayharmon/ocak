@@ -6,6 +6,7 @@ require_relative 'pipeline_executor'
 require_relative 'process_registry'
 require_relative 'git_utils'
 require_relative 'issue_backend'
+require_relative 'local_merge_manager'
 require_relative 'reready_processor'
 
 module Ocak
@@ -154,9 +155,7 @@ module Ocak
       results = threads.map(&:value)
 
       unless @shutting_down
-        merger = MergeManager.new(
-          config: @config, claude: build_claude(logger), logger: logger, issues: issues, watch: @watch_formatter
-        )
+        merger = build_merge_manager(logger: logger, issues: issues)
         results.select { |r| r[:success] }.each do |result|
           merge_completed_issue(result, merger: merger, issues: issues, logger: logger)
         end
@@ -250,6 +249,22 @@ module Ocak
     def build_logger(issue_number: nil)
       PipelineLogger.new(log_dir: File.join(@config.project_dir, @config.log_dir),
                          issue_number: issue_number, log_level: @options.fetch(:log_level, :normal))
+    end
+
+    def build_merge_manager(logger:, issues:)
+      if issues.is_a?(LocalIssueFetcher) && !gh_available?
+        LocalMergeManager.new(config: @config, logger: logger, issues: issues)
+      else
+        MergeManager.new(config: @config, claude: build_claude(logger), logger: logger,
+                         issues: issues, watch: @watch_formatter)
+      end
+    end
+
+    def gh_available?
+      _, _, status = Open3.capture3('gh', 'repo', 'view', '--json', 'name', chdir: @config.project_dir)
+      status.success?
+    rescue Errno::ENOENT
+      false
     end
 
     def build_claude(logger)
