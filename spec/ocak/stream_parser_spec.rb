@@ -363,8 +363,13 @@ RSpec.describe Ocak::StreamParser do
       expect(result_for('FAILED some test')[:passed]).to be false
     end
 
-    it 'defaults to true when no failure signal' do
-      expect(result_for('some random output')[:passed]).to be true
+    it 'returns nil when no recognized pattern matches' do
+      expect(result_for('some random output')[:passed]).to be_nil
+    end
+
+    it 'logs UNKNOWN when no recognized pattern matches' do
+      result_for('some random output')
+      expect(logger).to have_received(:info).with('[TEST] UNKNOWN (cargo test)', agent: 'reviewer')
     end
   end
 end

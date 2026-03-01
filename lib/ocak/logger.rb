@@ -166,8 +166,11 @@ module Ocak
     def format_tool_result(prefix, event)
       return nil unless event[:is_test_result]
 
-      color = event[:passed] ? :green : :red
-      status = event[:passed] ? 'PASS' : 'FAIL'
+      color, status = case event[:passed]
+                      when true  then [:green, 'PASS']
+                      when false then [:red, 'FAIL']
+                      else [:yellow, 'UNKNOWN']
+                      end
       "#{prefix} #{c(color)}#{c(:bold)}[TEST #{status}]#{c(:reset)} #{c(:dim)}#{event[:command]}#{c(:reset)}"
     end
 

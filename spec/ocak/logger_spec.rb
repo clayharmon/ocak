@@ -131,6 +131,11 @@ RSpec.describe Ocak::WatchFormatter do
       expect(io.string).to include('FAIL')
     end
 
+    it 'formats unknown test result when passed is nil' do
+      formatter.emit('implementer', { category: :tool_result, is_test_result: true, passed: nil, command: 'rspec' })
+      expect(io.string).to include('UNKNOWN')
+    end
+
     it 'skips non-test tool results' do
       formatter.emit('implementer', { category: :tool_result, is_test_result: false })
       expect(io.string).to be_empty
