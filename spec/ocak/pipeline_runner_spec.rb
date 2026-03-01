@@ -998,6 +998,30 @@ RSpec.describe Ocak::PipelineRunner do
     end
   end
 
+  describe 'interruptible poll sleep' do
+    subject(:runner) { described_class.new(config: config, options: {}) }
+
+    before do
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(Ocak::WorktreeManager).to receive(:new)
+        .and_return(instance_double(Ocak::WorktreeManager, clean_stale: []))
+      allow(issues).to receive(:fetch_ready).and_return([])
+      allow(config).to receive(:poll_interval).and_return(60)
+    end
+
+    it 'breaks out of sleep early when shutting_down is set' do
+      call_count = 0
+      allow(runner).to receive(:sleep) do
+        call_count += 1
+        runner.instance_variable_set(:@shutting_down, true) if call_count == 1
+      end
+
+      runner.send(:run_loop)
+
+      expect(call_count).to eq(1)
+    end
+  end
+
   describe 'process_one_issue unexpected error' do
     subject(:runner) { described_class.new(config: config, options: { once: true }) }
 
