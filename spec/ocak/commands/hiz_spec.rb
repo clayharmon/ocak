@@ -620,7 +620,7 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(issues).to have_received(:transition)
-        .with(42, from: nil, to: 'pipeline-failed')
+        .with(42, from: 'auto-doing', to: 'pipeline-failed')
     end
   end
 
