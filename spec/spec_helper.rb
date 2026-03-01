@@ -13,6 +13,7 @@ require 'ocak/stream_parser'
 require 'ocak/claude_runner'
 require 'ocak/pipeline_executor'
 require 'ocak/git_utils'
+require 'ocak/project_key'
 require 'ocak/reready_processor'
 require 'ocak/logger'
 
