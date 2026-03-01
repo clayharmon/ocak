@@ -72,6 +72,10 @@ module Ocak
     def require_comment    = dig(:safety, :require_comment)
     def max_issues_per_run = dig(:safety, :max_issues_per_run) || 5
 
+    # Issues
+    def issue_backend = dig(:issues, :backend)
+    def local_issues? = issue_backend == 'local'
+
     # Labels
     def label_ready = dig(:labels, :ready) || 'auto-ready'
     def label_in_progress = dig(:labels, :in_progress) || 'auto-doing'

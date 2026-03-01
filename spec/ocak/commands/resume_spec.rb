@@ -25,6 +25,7 @@ RSpec.describe Ocak::Commands::Resume do
                     lint_check_command: nil,
                     setup_command: nil,
                     language: 'ruby',
+                    issue_backend: 'github',
                     steps: [
                       { 'agent' => 'implementer', 'role' => 'implement' },
                       { 'agent' => 'reviewer', 'role' => 'review' }
