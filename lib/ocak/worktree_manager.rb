@@ -64,7 +64,7 @@ module Ocak
       removed
     end
 
-    Worktree = Struct.new(:path, :branch, :issue_number)
+    Worktree = Struct.new(:path, :branch, :issue_number, keyword_init: true) # rubocop:disable Style/RedundantStructKeywordInit
 
     class WorktreeError < StandardError; end
 
