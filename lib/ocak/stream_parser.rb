@@ -157,7 +157,12 @@ module Ocak
       result_text = extract_tool_text(block['content'])
       passed = detect_test_pass(result_text)
       cmd_label = command[TEST_CMD_PATTERN] || 'test'
-      @logger.info("[TEST] #{passed ? 'PASS' : 'FAIL'} (#{cmd_label})", agent: @agent_name)
+      status_label = case passed
+                     when true  then 'PASS'
+                     when false then 'FAIL'
+                     else 'UNKNOWN'
+                     end
+      @logger.info("[TEST] #{status_label} (#{cmd_label})", agent: @agent_name)
 
       { category: :tool_result, is_test_result: true, passed: passed, command: cmd_label }
     end
@@ -193,7 +198,7 @@ module Ocak
       return false if output.match?(/FAIL/i) && !output.match?(/0 failed/i)
       return true  if output.match?(/passed/i) && !output.match?(/failed/i)
 
-      true # no obvious failure signal
+      nil # no recognized pattern — unknown result
     end
   end
 end
