@@ -38,12 +38,13 @@ module Ocak
     # Uses explicit lint_check_command config if provided; otherwise strips known fix flags from lint_command.
     def lint_check_command
       explicit = dig(:stack, :lint_check_command)
-      return explicit if explicit
+      return explicit if explicit && !explicit.empty?
 
       cmd = lint_command
       return nil unless cmd
 
-      cmd.gsub(/\s+(?:-A|--fix-dry-run|--fix-type|--unsafe-fix|--fix|--write|--allow-dirty)\b/, '').strip
+      # Longer --fix-* variants must precede --fix in the alternation due to \b matching after 'fix'
+      cmd.gsub(/\s+(?:-A|--fix-dry-run|--fix-type\s+\S+|--unsafe-fix|--fix|--write|--allow-dirty)\b/, '').strip
     end
 
     def security_commands
