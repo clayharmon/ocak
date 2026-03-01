@@ -78,6 +78,7 @@ module Ocak
         start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         chdir = @config.project_dir
 
+        issues.transition(issue_number, from: @config.label_ready, to: @config.label_in_progress)
         post_hiz_start_comment(issue_number, state: state)
         begin
           branch = create_branch(issue_number, chdir)
@@ -238,7 +239,7 @@ module Ocak
 
       def handle_failure(issue_number, phase, output, issues:, logger:)
         logger.error("Issue ##{issue_number} failed at phase: #{phase}")
-        issues.transition(issue_number, from: nil, to: @config.label_failed)
+        issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
         issues.comment(issue_number,
                        "Hiz (fast mode) failed at phase: #{phase}\n\n```\n#{output.to_s[0..1000]}\n```")
         warn "Issue ##{issue_number} failed at phase: #{phase}"

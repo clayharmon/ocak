@@ -14,6 +14,8 @@ RSpec.describe Ocak::Commands::Hiz do
                     test_command: nil,
                     lint_command: nil,
                     lint_check_command: nil,
+                    label_ready: 'auto-ready',
+                    label_in_progress: 'auto-doing',
                     label_failed: 'pipeline-failed',
                     language: 'ruby')
   end
@@ -531,7 +533,7 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(issues).to have_received(:transition)
-        .with(42, from: nil, to: 'pipeline-failed')
+        .with(42, from: 'auto-doing', to: 'pipeline-failed')
     end
 
     it 'checks out main to restore clean state' do
@@ -554,6 +556,33 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(claude).not_to have_received(:run_agent)
+    end
+  end
+
+  describe 'label transitions' do
+    it 'transitions from label_ready to label_in_progress at pipeline start' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(issues).to receive(:view).with(42).and_return(nil)
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
+              '--head', anything, chdir: '/project')
+        .and_return(["https://github.com/org/repo/pull/1\n", '', success_status])
+
+      command.call(issue: '42')
+
+      expect(issues).to have_received(:transition)
+        .with(42, from: 'auto-ready', to: 'auto-doing')
+    end
+
+    it 'transitions from label_in_progress to label_failed on failure' do
+      allow(claude).to receive(:run_agent)
+        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .and_return(failure_result)
+
+      command.call(issue: '42')
+
+      expect(issues).to have_received(:transition)
+        .with(42, from: 'auto-doing', to: 'pipeline-failed')
     end
   end
 
