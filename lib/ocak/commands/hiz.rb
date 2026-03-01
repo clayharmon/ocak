@@ -84,14 +84,14 @@ module Ocak
           branch = create_branch(issue_number, chdir)
         rescue RuntimeError => e
           fail_pipeline(issue_number, 'create-branch', e.message,
-                        start_time: start_time, state: state)
+                        start_time: start_time, state: state, logger: logger)
           return
         end
 
         failure = run_agents(issue_number, claude: claude, logger: logger, chdir: chdir, state: state)
         if failure
           fail_pipeline(issue_number, failure[:phase], failure[:output],
-                        start_time: start_time, state: state, branch: branch)
+                        start_time: start_time, state: state, logger: logger, branch: branch)
           return
         end
 
@@ -99,7 +99,7 @@ module Ocak
                                                                          chdir: chdir, state: state)
         if verification_failure
           fail_pipeline(issue_number, 'final-verify', verification_failure[:output],
-                        start_time: start_time, state: state, branch: branch)
+                        start_time: start_time, state: state, logger: logger, branch: branch)
           return
         end
 
@@ -234,17 +234,21 @@ module Ocak
         body
       end
 
-      def fail_pipeline(issue_number, phase, output, start_time:, state:, branch: nil)
+      def fail_pipeline(issue_number, phase, output, start_time:, state:, logger:, branch: nil) # rubocop:disable Metrics/ParameterLists
         duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
         post_hiz_summary_comment(issue_number, duration, success: false, failed_phase: phase, state: state)
-        handle_failure(issue_number, phase, output, issues: state.issues, logger: @logger, branch: branch)
+        handle_failure(issue_number, phase, output, issues: state.issues, logger: logger, branch: branch)
       end
 
       def handle_failure(issue_number, phase, output, issues:, logger:, branch: nil)
         logger.error("Issue ##{issue_number} failed at phase: #{phase}")
         issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
-        issues.comment(issue_number,
-                       "Hiz (fast mode) failed at phase: #{phase}\n\n```\n#{output.to_s[0..1000]}\n```")
+        begin
+          issues.comment(issue_number,
+                         "Hiz (fast mode) failed at phase: #{phase}\n\n```\n#{output.to_s[0..1000]}\n```")
+        rescue StandardError
+          nil
+        end
         warn "Issue ##{issue_number} failed at phase: #{phase}"
         GitUtils.checkout_main(chdir: @config.project_dir, logger: logger)
         delete_branch(branch, logger: logger) if branch
