@@ -210,10 +210,13 @@ RSpec.describe Ocak::Verification do
         .and_return(['', '', instance_double(Process::Status, success?: true)])
       allow(claude).to receive(:run_agent)
 
-      host.run_verification_with_retry(logger: logger, claude: claude, chdir: chdir, model: 'sonnet') { |body| body }
+      host.run_verification_with_retry(logger: logger, claude: claude, chdir: chdir,
+                                       model: 'us.anthropic.claude-sonnet-4-6-v1') do |body|
+        body
+      end
 
       expect(claude).to have_received(:run_agent)
-        .with('implementer', anything, chdir: chdir, model: 'sonnet')
+        .with('implementer', anything, chdir: chdir, model: 'us.anthropic.claude-sonnet-4-6-v1')
     end
 
     it 'does not pass model when nil' do

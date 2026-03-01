@@ -82,7 +82,7 @@ RSpec.describe Ocak::ClaudeRunner do
                                     total_cost_usd: 0.001, duration_ms: 1000, num_turns: 1)
 
         allow(Ocak::ProcessRunner).to receive(:run) do |cmd, **opts|
-          expect(cmd).to include('--model', 'sonnet')
+          expect(cmd).to include('--model', 'us.anthropic.claude-sonnet-4-6-v1')
           opts[:on_line]&.call(result_json)
           [result_json, '', instance_double(Process::Status, success?: true)]
         end
@@ -90,12 +90,12 @@ RSpec.describe Ocak::ClaudeRunner do
         runner.run_agent('reviewer', 'Review code')
       end
 
-      it 'does not pass --model flag for implementer (uses default)' do
+      it 'passes --model opus for implementer' do
         allow(config).to receive(:agent_path).with('implementer')
                                              .and_return(File.join(dir, '.claude', 'agents', 'reviewer.md'))
 
         allow(Ocak::ProcessRunner).to receive(:run) do |cmd, **_opts|
-          expect(cmd).not_to include('--model')
+          expect(cmd).to include('--model', 'us.anthropic.claude-opus-4-6-v1')
           ['', '', instance_double(Process::Status, success?: false)]
         end
 
@@ -107,12 +107,12 @@ RSpec.describe Ocak::ClaudeRunner do
                                     total_cost_usd: 0.01, duration_ms: 1000, num_turns: 1)
 
         allow(Ocak::ProcessRunner).to receive(:run) do |cmd, **opts|
-          expect(cmd).to include('--model', 'opus')
+          expect(cmd).to include('--model', 'us.anthropic.claude-opus-4-6-v1')
           opts[:on_line]&.call(result_json)
           [result_json, '', instance_double(Process::Status, success?: true)]
         end
 
-        runner.run_agent('reviewer', 'Review code', model: 'opus')
+        runner.run_agent('reviewer', 'Review code', model: 'us.anthropic.claude-opus-4-6-v1')
       end
 
       it 'reports failure when process exits non-zero' do
