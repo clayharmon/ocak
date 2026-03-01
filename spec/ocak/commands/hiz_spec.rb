@@ -586,6 +586,44 @@ RSpec.describe Ocak::Commands::Hiz do
     end
   end
 
+  describe 'branch name validation' do
+    it 'checks safe_branch_name? before creating the branch' do
+      allow(Ocak::GitUtils).to receive(:safe_branch_name?).and_return(false)
+
+      command.call(issue: '42')
+
+      expect(issues).to have_received(:comment)
+        .with(42, match(/failed at phase: create-branch/))
+    end
+  end
+
+  describe 'label transitions' do
+    it 'transitions from label_ready to label_in_progress at pipeline start' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(issues).to receive(:view).with(42).and_return(nil)
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
+              '--head', anything, chdir: '/project')
+        .and_return(["https://github.com/org/repo/pull/1\n", '', success_status])
+
+      command.call(issue: '42')
+
+      expect(issues).to have_received(:transition)
+        .with(42, from: 'auto-ready', to: 'auto-doing')
+    end
+
+    it 'transitions to label_failed on failure' do
+      allow(claude).to receive(:run_agent)
+        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .and_return(failure_result)
+
+      command.call(issue: '42')
+
+      expect(issues).to have_received(:transition)
+        .with(42, from: 'auto-doing', to: 'pipeline-failed')
+    end
+  end
+
   it 'exits with error on ConfigNotFound' do
     allow(Ocak::Config).to receive(:load).and_raise(Ocak::Config::ConfigNotFound, 'not found')
 
