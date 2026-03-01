@@ -6,16 +6,13 @@ require_relative '../config'
 require_relative '../claude_runner'
 require_relative '../git_utils'
 require_relative '../issue_fetcher'
-require_relative '../verification'
-require_relative '../planner'
+require_relative '../pipeline_executor'
 require_relative '../step_comments'
 require_relative '../logger'
 
 module Ocak
   module Commands
     class Hiz < Dry::CLI::Command
-      include Verification
-      include Planner
       include StepComments
 
       desc 'Fast-mode: implement an issue with Sonnet, create a PR (no merge)'
@@ -26,17 +23,10 @@ module Ocak
       option :verbose, type: :boolean, default: false, desc: 'Increase log detail'
       option :quiet, type: :boolean, default: false, desc: 'Suppress non-error output'
 
-      STEP_MODELS = {
-        'implementer' => 'sonnet',
-        'reviewer' => 'haiku',
-        'security-reviewer' => 'sonnet'
-      }.freeze
-
-      IMPLEMENT_STEP = { agent: 'implementer', role: 'implement' }.freeze
-
-      REVIEW_STEPS = [
-        { agent: 'reviewer',          role: 'review' },
-        { agent: 'security-reviewer', role: 'security' }
+      HIZ_STEPS = [
+        { agent: 'implementer', role: 'implement', model: 'sonnet' },
+        { agent: 'reviewer', role: 'review', model: 'haiku', parallel: true },
+        { agent: 'security-reviewer', role: 'security', model: 'sonnet', parallel: true }
       ].freeze
 
       HizState = Struct.new(:issues, :total_cost, :steps_run, :review_results)
@@ -88,38 +78,41 @@ module Ocak
           return
         end
 
-        failure = run_agents(issue_number, claude: claude, logger: logger, chdir: chdir, state: state)
-        if failure
-          fail_pipeline(issue_number, failure[:phase], failure[:output],
+        executor = PipelineExecutor.new(config: @config, issues: issues)
+        result = executor.run_pipeline(
+          issue_number, logger: logger, claude: claude, chdir: chdir,
+                        steps: HIZ_STEPS, verification_model: 'sonnet',
+                        post_start_comment: false, post_summary_comment: false
+        )
+
+        state.total_cost = result[:total_cost] || 0.0
+        state.steps_run = result[:steps_run] || 0
+        state.steps_run += 1 if verification_ran?(result)
+
+        unless result[:success]
+          fail_pipeline(issue_number, result[:phase], result[:output],
                         start_time: start_time, state: state, logger: logger, branch: branch)
           return
         end
 
-        verification_failure = run_final_verification_step(issue_number, claude: claude, logger: logger,
-                                                                         chdir: chdir, state: state)
-        if verification_failure
-          fail_pipeline(issue_number, 'final-verify', verification_failure[:output],
-                        start_time: start_time, state: state, logger: logger, branch: branch)
-          return
-        end
+        state.review_results = extract_review_results(result[:step_results])
 
         duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
         post_hiz_summary_comment(issue_number, duration, success: true, state: state)
         push_and_create_pr(issue_number, branch, logger: logger, chdir: chdir, state: state)
       end
 
-      def run_agents(issue_number, claude:, logger:, chdir:, state:)
-        result = run_step(IMPLEMENT_STEP, issue_number, claude: claude, logger: logger, chdir: chdir, state: state)
-        state.steps_run += 1
-        state.total_cost += result.cost_usd.to_f
-        unless result.success?
-          logger.error("Implementation failed for issue ##{issue_number}")
-          return { phase: 'implement', output: result.output }
-        end
+      def verification_ran?(result)
+        (@config.test_command || @config.lint_check_command) &&
+          (result[:success] || result[:phase] == 'final-verify')
+      end
 
-        state.review_results = run_reviews_in_parallel(issue_number, claude: claude, logger: logger,
-                                                                     chdir: chdir, state: state)
-        nil
+      def extract_review_results(step_results)
+        return {} unless step_results
+
+        step_results.select do |_role, r|
+          r&.blocking_findings? || r&.warnings?
+        end
       end
 
       def create_branch(issue_number, chdir)
@@ -130,56 +123,6 @@ module Ocak
         raise "Failed to create branch #{branch}: #{stderr}" unless status.success?
 
         branch
-      end
-
-      def run_reviews_in_parallel(issue_number, claude:, logger:, chdir:, state:)
-        threads = REVIEW_STEPS.map do |step|
-          Thread.new do
-            run_step(step, issue_number, claude: claude, logger: logger, chdir: chdir, state: state)
-          rescue StandardError => e
-            logger.error("#{step[:role]} thread failed: #{e.message}")
-            nil
-          end
-        end
-
-        thread_results = threads.map(&:value)
-
-        results = {}
-        thread_results.each_with_index do |result, i|
-          step = REVIEW_STEPS[i]
-          if result
-            state.steps_run += 1
-            state.total_cost += result.cost_usd.to_f
-            results[step[:role]] = result if result.blocking_findings? || result.warnings?
-          end
-          next if result.nil? || result.success?
-
-          logger.warn("#{step[:role]} reported issues but continuing")
-        end
-        results
-      end
-
-      def run_step(step, issue_number, claude:, logger:, chdir:, state:)
-        agent = step[:agent]
-        role = step[:role]
-        model = STEP_MODELS[agent]
-        logger.info("--- Phase: #{role} (#{agent}) [#{model}] ---")
-        post_step_comment(issue_number, "\u{1F504} **Phase: #{role}** (#{agent})", issues: state.issues)
-        prompt = build_step_prompt(role, issue_number, nil)
-        result = claude.run_agent(agent, prompt, chdir: chdir, model: model)
-        post_step_completion_comment(issue_number, role, result, issues: state.issues)
-        result
-      end
-
-      def run_final_verification_step(issue_number, claude:, logger:, chdir:, state:)
-        return nil unless @config.test_command || @config.lint_check_command
-
-        result = run_verification_with_retry(logger: logger, claude: claude, chdir: chdir,
-                                             model: STEP_MODELS['implementer']) do |body|
-          post_step_comment(issue_number, body, issues: state.issues)
-        end
-        state.steps_run += 1
-        result
       end
 
       def push_and_create_pr(issue_number, branch, logger:, chdir:, state:)

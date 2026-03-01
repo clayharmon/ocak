@@ -17,7 +17,8 @@ RSpec.describe Ocak::Commands::Hiz do
                     label_ready: 'auto-ready',
                     label_in_progress: 'auto-doing',
                     label_failed: 'pipeline-failed',
-                    language: 'ruby')
+                    language: 'ruby',
+                    cost_budget: nil)
   end
 
   let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, debug: nil, log_file_path: nil) }
@@ -28,13 +29,19 @@ RSpec.describe Ocak::Commands::Hiz do
   let(:success_status) { instance_double(Process::Status, success?: true) }
   let(:failure_status) { instance_double(Process::Status, success?: false) }
 
+  let(:pipeline_state) { instance_double(Ocak::PipelineState, save: nil, delete: nil) }
+  let(:run_report) { instance_double(Ocak::RunReport, record_step: nil, finish: nil, save: nil) }
+
   before do
     allow(Ocak::Config).to receive(:load).and_return(config)
     allow(Ocak::PipelineLogger).to receive(:new).and_return(logger)
     allow(Ocak::ClaudeRunner).to receive(:new).and_return(claude)
     allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+    allow(Ocak::PipelineState).to receive(:new).and_return(pipeline_state)
+    allow(Ocak::RunReport).to receive(:new).and_return(run_report)
     # Default: all git/gh commands succeed
     allow(Open3).to receive(:capture3).and_return(['', '', success_status])
+    allow(FileUtils).to receive(:mkdir_p)
   end
 
   context 'with --dry-run' do
