@@ -114,7 +114,11 @@ module Ocak
         break if @options[:once]
 
         logger.info("Sleeping #{@config.poll_interval}s...")
-        sleep @config.poll_interval
+        @config.poll_interval.times do
+          break if @shutting_down
+
+          sleep 1
+        end
       end
     end
 
