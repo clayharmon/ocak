@@ -10,6 +10,11 @@ require_relative 'commands/status'
 require_relative 'commands/clean'
 require_relative 'commands/resume'
 require_relative 'commands/hiz'
+require_relative 'commands/issue/create'
+require_relative 'commands/issue/list'
+require_relative 'commands/issue/view'
+require_relative 'commands/issue/edit'
+require_relative 'commands/issue/close'
 
 module Ocak
   module CLI
@@ -25,6 +30,14 @@ module Ocak
       register 'clean',  Ocak::Commands::Clean
       register 'resume', Ocak::Commands::Resume
       register 'hiz',    Ocak::Commands::Hiz
+
+      register 'issue' do |prefix|
+        prefix.register 'create', Ocak::Commands::Issue::Create
+        prefix.register 'list',   Ocak::Commands::Issue::List
+        prefix.register 'view',   Ocak::Commands::Issue::View
+        prefix.register 'edit',   Ocak::Commands::Issue::Edit
+        prefix.register 'close',  Ocak::Commands::Issue::Close
+      end
     end
   end
 end
