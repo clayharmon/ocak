@@ -91,7 +91,7 @@ module Ocak
         failure = run_agents(issue_number, claude: claude, logger: logger, chdir: chdir, state: state)
         if failure
           fail_pipeline(issue_number, failure[:phase], failure[:output],
-                        start_time: start_time, state: state, logger: logger)
+                        start_time: start_time, state: state, logger: logger, branch: branch)
           return
         end
 
@@ -99,7 +99,7 @@ module Ocak
                                                                          chdir: chdir, state: state)
         if verification_failure
           fail_pipeline(issue_number, 'final-verify', verification_failure[:output],
-                        start_time: start_time, state: state, logger: logger)
+                        start_time: start_time, state: state, logger: logger, branch: branch)
           return
         end
 
@@ -188,7 +188,7 @@ module Ocak
         _, stderr, status = Open3.capture3('git', 'push', '-u', 'origin', branch, chdir: chdir)
         unless status.success?
           logger.error("Push failed: #{stderr}")
-          handle_failure(issue_number, 'push', stderr, issues: state.issues, logger: logger)
+          handle_failure(issue_number, 'push', stderr, issues: state.issues, logger: logger, branch: branch)
           return
         end
 
@@ -211,7 +211,7 @@ module Ocak
           puts "PR created: #{pr_url}"
         else
           logger.error("PR creation failed: #{stderr}")
-          handle_failure(issue_number, 'pr-create', stderr, issues: state.issues, logger: logger)
+          handle_failure(issue_number, 'pr-create', stderr, issues: state.issues, logger: logger, branch: branch)
         end
       end
 
@@ -234,19 +234,31 @@ module Ocak
         body
       end
 
-      def fail_pipeline(issue_number, phase, output, start_time:, state:, logger:)
+      def fail_pipeline(issue_number, phase, output, start_time:, state:, logger:, branch: nil) # rubocop:disable Metrics/ParameterLists
         duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time).round
         post_hiz_summary_comment(issue_number, duration, success: false, failed_phase: phase, state: state)
-        handle_failure(issue_number, phase, output, issues: state.issues, logger: logger)
+        handle_failure(issue_number, phase, output, issues: state.issues, logger: logger, branch: branch)
       end
 
-      def handle_failure(issue_number, phase, output, issues:, logger:)
+      def handle_failure(issue_number, phase, output, issues:, logger:, branch: nil)
         logger.error("Issue ##{issue_number} failed at phase: #{phase}")
         issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
-        issues.comment(issue_number,
-                       "Hiz (fast mode) failed at phase: #{phase}\n\n```\n#{output.to_s[0..1000]}\n```")
+        begin
+          issues.comment(issue_number,
+                         "Hiz (fast mode) failed at phase: #{phase}\n\n```\n#{output.to_s[0..1000]}\n```")
+        rescue StandardError
+          nil
+        end
         warn "Issue ##{issue_number} failed at phase: #{phase}"
         GitUtils.checkout_main(chdir: @config.project_dir, logger: logger)
+        delete_branch(branch, logger: logger) if branch
+      end
+
+      def delete_branch(branch, logger:)
+        _, stderr, status = Open3.capture3('git', 'branch', '-D', branch, chdir: @config.project_dir)
+        logger.warn("Failed to delete branch #{branch}: #{stderr}") unless status.success?
+      rescue StandardError => e
+        logger.warn("Error deleting branch #{branch}: #{e.message}")
       end
 
       def build_logger(issue_number)

@@ -133,6 +133,30 @@ RSpec.describe Ocak::Commands::Hiz do
       expect(Open3).to have_received(:capture3)
         .with('git', 'checkout', 'main', chdir: '/project')
     end
+
+    it 'deletes the failed branch after checking out main' do
+      command.call(issue: '42')
+
+      expect(Open3).to have_received(:capture3)
+        .with('git', 'branch', '-D', match(%r{\Ahiz/issue-42-}), chdir: '/project')
+    end
+  end
+
+  context 'when branch deletion fails after pipeline failure' do
+    before do
+      allow(claude).to receive(:run_agent)
+        .with('implementer', anything, chdir: '/project', model: 'sonnet')
+        .and_return(failure_result)
+      allow(Open3).to receive(:capture3)
+        .with('git', 'branch', '-D', anything, chdir: '/project')
+        .and_return(['', 'error: branch not found', failure_status])
+    end
+
+    it 'logs a warning but does not crash' do
+      command.call(issue: '42')
+
+      expect(logger).to have_received(:warn).with(/Failed to delete branch/)
+    end
   end
 
   context 'when review fails but implementation succeeds' do
@@ -242,6 +266,13 @@ RSpec.describe Ocak::Commands::Hiz do
       expect(issues).to have_received(:comment).with(42, match(/failed at phase: push/))
       expect(Open3).to have_received(:capture3)
         .with('git', 'checkout', 'main', chdir: '/project')
+    end
+
+    it 'deletes the failed branch' do
+      command.call(issue: '42')
+
+      expect(Open3).to have_received(:capture3)
+        .with('git', 'branch', '-D', match(%r{\Ahiz/issue-42-}), chdir: '/project')
     end
   end
 
@@ -556,6 +587,13 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(claude).not_to have_received(:run_agent)
+    end
+
+    it 'does not attempt to delete a branch' do
+      command.call(issue: '42')
+
+      expect(Open3).not_to have_received(:capture3)
+        .with('git', 'branch', '-D', anything, chdir: '/project')
     end
   end
 
