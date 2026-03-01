@@ -10,7 +10,7 @@ RSpec.describe Ocak::MergeManager do
   end
 
   let(:logger) do
-    instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil)
+    instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, debug: nil)
   end
 
   let(:claude) do
@@ -278,11 +278,18 @@ RSpec.describe Ocak::MergeManager do
           .and_return(['', '', success_status])
         allow(Open3).to receive(:capture3)
           .with('bundle', 'exec', 'rspec', chdir: worktree.path)
-          .and_return(['', 'failures', failure_status])
+          .and_return(["3 examples, 1 failure\nrspec ./spec/foo_spec.rb:5", 'coverage warning', failure_status])
       end
 
       it 'returns false' do
         expect(manager.merge(42, worktree)).to be false
+      end
+
+      it 'logs test output at debug level' do
+        manager.merge(42, worktree)
+
+        expect(logger).to have_received(:debug).with(/3 examples, 1 failure/)
+        expect(logger).to have_received(:debug).with(/coverage warning/)
       end
     end
 
