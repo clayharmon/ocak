@@ -8,6 +8,8 @@ module Ocak
       issues.transition(issue_number, from: config.label_in_progress, to: config.label_failed)
       issues.comment(issue_number,
                      "Pipeline failed at phase: #{result[:phase]}\n\n```\n#{result[:output][0..1000]}\n```")
+    rescue StandardError
+      nil
     end
   end
 end

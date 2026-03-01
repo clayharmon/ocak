@@ -47,4 +47,11 @@ RSpec.describe Ocak::FailureReporting do
       expect(code_block_content.length).to eq(1001)
     end
   end
+
+  it 'does not raise when comment fails' do
+    allow(issues).to receive(:comment).and_raise(StandardError, 'GitHub API down')
+    result = { phase: 'implement', output: 'error' }
+
+    expect { includer.report_pipeline_failure(42, result, issues: issues, config: config) }.not_to raise_error
+  end
 end
