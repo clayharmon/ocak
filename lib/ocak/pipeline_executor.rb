@@ -100,30 +100,73 @@ module Ocak
     end
 
     def run_pipeline_steps(issue_number, state, logger:, claude:, chdir:, skip_steps: [])
-      active_steps.each_with_index do |step, idx|
+      @skip_steps = skip_steps
+      steps = active_steps
+      idx = 0
+      while idx < steps.size
         break if check_shutdown(state, logger)
 
-        step = symbolize(step)
-        role = step[:role].to_s
-        agent = step[:agent].to_s
-
-        next if handle_already_completed(idx, role, skip_steps, logger)
-
-        reason = skip_reason(step, state)
-        if reason
-          logger.info("Skipping #{role} \u2014 #{reason}")
-          record_skipped_step(issue_number, state, idx, agent, role, reason)
-          next
+        step = symbolize(steps[idx])
+        if step[:parallel]
+          group = collect_parallel_group(steps, idx)
+          failure = run_parallel_group(group, issue_number, state, logger: logger, claude: claude, chdir: chdir)
+          idx += group.size
+        else
+          failure = run_single_step(step, idx, issue_number, state, logger: logger, claude: claude, chdir: chdir)
+          idx += 1
         end
-
-        result = execute_step(step, issue_number, state[:last_review_output], logger: logger, claude: claude,
-                                                                              chdir: chdir)
-        state[:report].record_step(index: idx, agent: agent, role: role, status: 'completed', result: result)
-        ctx = StepContext.new(issue_number, idx, role, result, state, logger, chdir)
-        failure = record_step_result(ctx)
         return failure if failure
       end
       nil
+    end
+
+    def collect_parallel_group(steps, start_idx)
+      group = []
+      idx = start_idx
+      while idx < steps.size
+        step = symbolize(steps[idx])
+        break unless step[:parallel]
+
+        group << [step, idx]
+        idx += 1
+      end
+      group
+    end
+
+    def run_parallel_group(group, issue_number, state, logger:, claude:, chdir:)
+      mutex = Mutex.new
+      threads = group.map do |step, idx|
+        Thread.new do
+          run_single_step(step, idx, issue_number, state, logger: logger, claude: claude,
+                                                          chdir: chdir, mutex: mutex)
+        rescue StandardError => e
+          logger.error("#{step[:role]} thread failed: #{e.message}")
+          nil
+        end
+      end
+
+      results = threads.map(&:value)
+      results.compact.find { |r| r.is_a?(Hash) && !r[:success] }
+    end
+
+    def run_single_step(step, idx, issue_number, state, logger:, claude:, chdir:, mutex: nil) # rubocop:disable Metrics/ParameterLists
+      role = step[:role].to_s
+      agent = step[:agent].to_s
+
+      return nil if handle_already_completed(idx, role, @skip_steps, logger)
+
+      reason = skip_reason(step, state)
+      if reason
+        logger.info("Skipping #{role} \u2014 #{reason}")
+        record_skipped_step(issue_number, state, idx, agent, role, reason)
+        return nil
+      end
+
+      result = execute_step(step, issue_number, state[:last_review_output], logger: logger, claude: claude,
+                                                                            chdir: chdir)
+      state[:report].record_step(index: idx, agent: agent, role: role, status: 'completed', result: result)
+      ctx = StepContext.new(issue_number, idx, role, result, state, logger, chdir)
+      record_step_result(ctx, mutex: mutex)
     end
 
     def check_shutdown(state, logger)
@@ -157,8 +200,8 @@ module Ocak
       claude.run_agent(agent.tr('_', '-'), prompt, **opts)
     end
 
-    def record_step_result(ctx)
-      accumulate_state(ctx)
+    def record_step_result(ctx, mutex: nil)
+      sync(mutex) { accumulate_state(ctx) }
       save_step_progress(ctx)
       write_step_output(ctx.issue_number, ctx.idx, ctx.role, ctx.result.output)
       post_step_completion_comment(ctx.issue_number, ctx.role, ctx.result)
@@ -172,6 +215,14 @@ module Ocak
       ctx.state[:steps_run] += 1
       ctx.state[:total_cost] += ctx.result.cost_usd.to_f
       ctx.state[:step_results][ctx.role] = ctx.result
+    end
+
+    def sync(mutex, &)
+      if mutex
+        mutex.synchronize(&)
+      else
+        yield
+      end
     end
 
     def save_step_progress(ctx)

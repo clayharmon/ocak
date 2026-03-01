@@ -1129,4 +1129,88 @@ RSpec.describe Ocak::PipelineExecutor do
         .with('implementer', match(/Fix these/), chdir: '/project')
     end
   end
+
+  describe 'parallel step execution' do
+    let(:parallel_steps) do
+      [
+        { agent: 'implementer', role: 'implement' },
+        { agent: 'reviewer', role: 'review', parallel: true },
+        { agent: 'security-reviewer', role: 'security', parallel: true }
+      ]
+    end
+
+    it 'executes both parallel steps' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude, steps: parallel_steps)
+
+      expect(result[:success]).to be true
+      expect(claude).to have_received(:run_agent).with('implementer', anything, chdir: anything)
+      expect(claude).to have_received(:run_agent).with('reviewer', anything, hash_including(chdir: anything))
+      expect(claude).to have_received(:run_agent).with('security-reviewer', anything, chdir: anything)
+    end
+
+    it 'continues when a parallel review step fails' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(claude).to receive(:run_agent)
+        .with('reviewer', anything, chdir: anything)
+        .and_return(failure_result)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude, steps: parallel_steps)
+
+      expect(result[:success]).to be true
+      expect(claude).to have_received(:run_agent).with('security-reviewer', anything, chdir: anything)
+    end
+
+    it 'catches thread exceptions and continues' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+      allow(claude).to receive(:run_agent)
+        .with('reviewer', anything, chdir: anything)
+        .and_raise(StandardError, 'connection reset')
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude, steps: parallel_steps)
+
+      expect(result[:success]).to be true
+      expect(logger).to have_received(:error).with(/review thread failed: connection reset/)
+    end
+
+    it 'accumulates cost and steps_run from parallel steps' do
+      impl_r = Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Done', cost_usd: 0.10)
+      review_r = Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'OK', cost_usd: 0.05)
+      security_r = Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'OK', cost_usd: 0.03)
+
+      allow(claude).to receive(:run_agent).with('implementer', anything, chdir: anything).and_return(impl_r)
+      allow(claude).to receive(:run_agent).with('reviewer', anything, chdir: anything).and_return(review_r)
+      allow(claude).to receive(:run_agent).with('security-reviewer', anything, chdir: anything).and_return(security_r)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude, steps: parallel_steps)
+
+      expect(result[:total_cost]).to be_within(0.001).of(0.18)
+      expect(result[:steps_run]).to eq(3)
+    end
+
+    it 'stores step_results from parallel steps' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude, steps: parallel_steps)
+
+      expect(result[:step_results]).to have_key('review')
+      expect(result[:step_results]).to have_key('security')
+    end
+
+    it 'runs sequential steps before and after parallel groups' do
+      steps = [
+        { agent: 'implementer', role: 'implement' },
+        { agent: 'reviewer', role: 'review', parallel: true },
+        { agent: 'security-reviewer', role: 'security', parallel: true },
+        { agent: 'merger', role: 'merge' }
+      ]
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      result = executor.run_pipeline(42, logger: logger, claude: claude, steps: steps)
+
+      expect(result[:success]).to be true
+      expect(claude).to have_received(:run_agent).with('merger', anything, chdir: anything)
+    end
+  end
 end
