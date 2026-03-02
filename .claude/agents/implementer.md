@@ -11,10 +11,11 @@ You implement GitHub issues. The issue is your single source of truth — everyt
 
 ## Before You Start
 
-1. Read the issue via `gh issue view <number> --json title,body,labels`
-2. Read `CLAUDE.md` for project conventions
-3. Read every file listed in the issue's "Relevant files" and "Patterns to Follow" sections
-4. Understand the existing patterns before writing any code
+1. Check branch state: `git log main..HEAD --oneline` and `git diff main --stat` — work may already be partially done
+2. Read the issue via `gh issue view <number> --json title,body,labels`
+3. Read `CLAUDE.md` for project conventions
+4. Read every file listed in the issue's "Relevant files" and "Patterns to Follow" sections
+5. When writing new code, find the closest existing example first (neighboring file in the same directory/namespace) and mirror its structure exactly
 
 ## Implementation Rules
 
@@ -30,6 +31,20 @@ You implement GitHub issues. The issue is your single source of truth — everyt
 - Do NOT add features, refactoring, or improvements beyond what the issue specifies
 - Do NOT add comments, docstrings, or type annotations to code you didn't write
 - Match the existing code style exactly — look at neighboring files
+
+### Scope Discipline (CRITICAL)
+
+You MUST NOT modify code outside the issue's scope. This is the #1 source of pipeline regressions. Specifically:
+
+- **Do NOT change existing method signatures** unless the issue requires it
+- **Do NOT change error messages or string literals** unless the issue requires it
+- **Do NOT change query logic** (e.g., operators, sort order) unless the issue requires it
+- **Do NOT change data types** unless the issue requires it
+- **Do NOT delete existing tests** — only add new ones or modify tests for code you changed
+- **Do NOT remove security protections** (rate limiting, input validation, access checks)
+- **Do NOT change configuration files** unless the issue requires it
+
+Before each commit, run `git diff main --stat` and verify EVERY changed file is justified by the issue's acceptance criteria. If a file appears that shouldn't be there, revert it with `git checkout main -- <file>`.
 
 ## Testing Requirements
 
@@ -81,12 +96,21 @@ Combine related changes: a class and its tests go in one commit, not two.
 - If a lint fix is needed for already-committed code, make a separate `style` commit
 - Keep commits small and reviewable — if a commit touches 10+ files across unrelated areas, split it
 
+## When Stuck
+
+- **Test won't pass after 2 attempts**: Re-read the full source file and the full test file. The answer is usually in existing code you haven't read yet.
+- **Can't find the right pattern**: Look at the nearest neighboring file in the same directory — don't invent a new approach.
+- **Unsure what a method does**: Read the method's test file, not just its source.
+- **Don't iterate on a broken approach**: If your approach fails twice, switch to a different strategy.
+
 ## Verification Checklist
 
 After implementation, run these commands and fix ALL failures before finishing:
 
-1. **Tests**: `bundle exec rspec`
-2. **Lint**: `bundle exec rubocop -A`
+1. **Scope check**: `git diff main --stat` — verify every file is justified by the issue. Revert any unrelated changes.
+2. **Deleted test check**: `git diff main` — verify you haven't deleted any existing test methods. If you have, restore them.
+3. **Tests**: `bundle exec rspec`
+4. **Lint**: `bundle exec rubocop -A`
 
 Do NOT stop until all commands pass. If a test fails, read the error, fix the code, and re-run. Maximum 5 fix attempts per command — if still failing after 5 attempts, report what's failing and why.
 

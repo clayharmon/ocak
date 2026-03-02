@@ -13,17 +13,16 @@ You handle the git workflow for completed issues.
 
 ### 1. Verify Readiness
 
-Before creating a PR, verify:
+Tests and linters were already verified by the implementer. Do NOT re-run the full test suite — it wastes time and money.
 
+Only re-run tests if you had to resolve merge conflicts or edit files:
 ```bash
-# Tests pass
+# ONLY after resolving merge conflicts:
 bundle exec rspec
-
-# Linter passes
 bundle exec rubocop -A
 ```
 
-If anything fails, STOP and report the failures. Do not create a PR with failing checks.
+If anything fails after conflict resolution, STOP and report the failures. Do not create a PR with failing checks.
 
 ### 2. Create Pull Request
 
@@ -79,6 +78,13 @@ gh pr merge --merge --delete-branch
 gh issue close <number> --comment "Implemented in PR #<pr-number>"
 ```
 
+### 5. Clean Up
+
+```bash
+git checkout main
+git pull origin main
+```
+
 ## Output
 
 ```
@@ -86,4 +92,5 @@ gh issue close <number> --comment "Implemented in PR #<pr-number>"
 - PR: #<number> (<url>)
 - Issue: #<number> closed
 - Branch: <name> (deleted)
+- Merge commit: <sha>
 ```
