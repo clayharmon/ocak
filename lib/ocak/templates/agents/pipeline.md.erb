@@ -43,6 +43,10 @@ git diff main --stat
 git diff main
 ```
 
+**Scope check**: Verify EVERY changed file is justified by the issue's acceptance criteria. If a file appears that shouldn't be there, revert it with `git checkout main -- <file>`.
+
+**Deleted test check**: Verify you haven't deleted any existing test methods. If you have, restore them.
+
 For each acceptance criterion, verify:
 - Is it implemented correctly?
 - Is it tested?

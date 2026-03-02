@@ -85,8 +85,8 @@ Rate each finding:
 [What was done well]
 
 ### Acceptance Criteria Check
-- [ ] Criterion 1: implemented and tested / missing [details]
-- [ ] Criterion 2: ...
+- [ ] Criterion 1: ✅ Implemented and tested / ❌ Missing [details]
+- [ ] Criterion 2: ✅ / ❌
 
 ### Test Coverage
 - [List any untested paths or missing edge cases]
