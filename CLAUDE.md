@@ -13,7 +13,10 @@ lib/ocak/
 ├── monorepo_detector.rb   # MonorepoDetector module (included by StackDetector) — npm/pnpm/cargo/go workspace detection
 ├── agent_generator.rb     # Generates agent/skill/hook files from ERB templates, optionally enhanced via claude -p
 ├── pipeline_runner.rb     # Orchestration: poll → plan → worktree → delegate to executor → merge
-├── pipeline_executor.rb   # Step execution: run_pipeline, execute_step, conditions, cost tracking, progress comments
+├── pipeline_executor.rb   # Orchestrates pipeline step execution; includes ParallelExecution, StateManagement, StepExecution, Verification, Planner, StepComments
+├── parallel_execution.rb  # ParallelExecution module (included by PipelineExecutor) — collect_parallel_group, run_parallel_group, sync
+├── state_management.rb    # StateManagement module (included by PipelineExecutor) — accumulate_state, save_step_progress, write_step_output, check_step_failure, check_cost_budget, update_pipeline_state, log_cost_summary, save_report
+├── step_execution.rb      # StepExecution module (included by PipelineExecutor) — run_single_step, handle_already_completed, record_skipped_step, execute_step, skip_reason
 ├── claude_runner.rb       # Wraps `claude -p` with stream-json parsing (StreamParser, AgentResult)
 ├── issue_fetcher.rb       # GitHub CLI wrapper for all issue data access — listing, labeling, commenting, label creation, view
 ├── worktree_manager.rb    # Git worktree create/remove/list/clean

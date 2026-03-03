@@ -7,14 +7,18 @@ require_relative 'run_report'
 require_relative 'verification'
 require_relative 'planner'
 require_relative 'step_comments'
+require_relative 'state_management'
+require_relative 'step_execution'
+require_relative 'parallel_execution'
 
 module Ocak
   class PipelineExecutor
     include Verification
     include Planner
     include StepComments
-
-    StepContext = Struct.new(:issue_number, :idx, :role, :result, :state, :logger, :chdir)
+    include StateManagement
+    include StepExecution
+    include ParallelExecution
 
     attr_writer :issues
 
@@ -120,55 +124,6 @@ module Ocak
       nil
     end
 
-    def collect_parallel_group(steps, start_idx)
-      group = []
-      idx = start_idx
-      while idx < steps.size
-        step = symbolize(steps[idx])
-        break unless step[:parallel]
-
-        group << [step, idx]
-        idx += 1
-      end
-      group
-    end
-
-    def run_parallel_group(group, issue_number, state, logger:, claude:, chdir:)
-      mutex = Mutex.new
-      threads = group.map do |step, idx|
-        Thread.new do
-          run_single_step(step, idx, issue_number, state, logger: logger, claude: claude,
-                                                          chdir: chdir, mutex: mutex)
-        rescue StandardError => e
-          logger.error("#{step[:role]} thread failed: #{e.message}")
-          nil
-        end
-      end
-
-      results = threads.map(&:value)
-      results.compact.find { |r| r.is_a?(Hash) && !r[:success] }
-    end
-
-    def run_single_step(step, idx, issue_number, state, logger:, claude:, chdir:, mutex: nil) # rubocop:disable Metrics/ParameterLists
-      role = step[:role].to_s
-      agent = step[:agent].to_s
-
-      return nil if handle_already_completed(idx, role, @skip_steps, logger)
-
-      reason = skip_reason(step, state)
-      if reason
-        logger.info("Skipping #{role} \u2014 #{reason}")
-        record_skipped_step(issue_number, state, idx, agent, role, reason)
-        return nil
-      end
-
-      result = execute_step(step, issue_number, state[:last_review_output], logger: logger, claude: claude,
-                                                                            chdir: chdir)
-      state[:report].record_step(index: idx, agent: agent, role: role, status: 'completed', result: result)
-      ctx = StepContext.new(issue_number, idx, role, result, state, logger, chdir)
-      record_step_result(ctx, mutex: mutex)
-    end
-
     def check_shutdown(state, logger)
       return false unless @shutdown_check&.call
 
@@ -176,142 +131,11 @@ module Ocak
       state[:interrupted] = true
     end
 
-    def handle_already_completed(idx, role, skip_steps, logger)
-      return false unless skip_steps.include?(idx)
-
-      logger.info("Skipping #{role} (already completed)")
-      true
-    end
-
-    def record_skipped_step(issue_number, state, idx, agent, role, reason)
-      post_step_comment(issue_number, "\u{23ED}\u{FE0F} **Skipping #{role}** \u2014 #{reason}")
-      state[:report].record_step(index: idx, agent: agent, role: role, status: 'skipped', skip_reason: reason)
-      state[:steps_skipped] += 1
-    end
-
-    def execute_step(step, issue_number, review_output, logger:, claude:, chdir:)
-      agent = step[:agent].to_s
-      role = step[:role].to_s
-      logger.info("--- Phase: #{role} (#{agent}) ---")
-      post_step_comment(issue_number, "\u{1F504} **Phase: #{role}** (#{agent})")
-      prompt = build_step_prompt(role, issue_number, review_output)
-      opts = { chdir: chdir }
-      opts[:model] = step[:model].to_s if step[:model]
-      claude.run_agent(agent.tr('_', '-'), prompt, **opts)
-    end
-
-    def record_step_result(ctx, mutex: nil)
-      sync(mutex) { accumulate_state(ctx) }
-      save_step_progress(ctx)
-      write_step_output(ctx.issue_number, ctx.idx, ctx.role, ctx.result.output)
-      post_step_completion_comment(ctx.issue_number, ctx.role, ctx.result)
-
-      check_step_failure(ctx) || check_cost_budget(ctx.state, ctx.logger)
-    end
-
-    def accumulate_state(ctx)
-      update_pipeline_state(ctx.role, ctx.result, ctx.state)
-      ctx.state[:completed_steps] << ctx.idx
-      ctx.state[:steps_run] += 1
-      ctx.state[:total_cost] += ctx.result.cost_usd.to_f
-      ctx.state[:step_results][ctx.role] = ctx.result
-    end
-
-    def sync(mutex, &)
-      if mutex
-        mutex.synchronize(&)
-      else
-        yield
-      end
-    end
-
-    def save_step_progress(ctx)
-      pipeline_state.save(ctx.issue_number,
-                          completed_steps: ctx.state[:completed_steps],
-                          worktree_path: ctx.chdir,
-                          branch: current_branch(ctx.chdir, logger: ctx.logger))
-    end
-
-    def write_step_output(issue_number, idx, agent, output)
-      return if output.to_s.empty?
-      return unless issue_number.to_s.match?(/\A\d+\z/)
-
-      safe_agent = agent.to_s.gsub(/[^a-zA-Z0-9_-]/, '')
-      dir = File.join(@config.project_dir, '.ocak', 'logs', "issue-#{issue_number}")
-      FileUtils.mkdir_p(dir)
-      File.write(File.join(dir, "step-#{idx}-#{safe_agent}.md"), output)
-    rescue StandardError => e
-      @logger&.debug("Step output write failed: #{e.message}")
-      nil
-    end
-
-    def check_step_failure(ctx)
-      return nil if ctx.result.success? || !%w[implement merge].include?(ctx.role)
-
-      ctx.logger.error("#{ctx.role} failed")
-      { success: false, phase: ctx.role, output: ctx.result.output }
-    end
-
-    def check_cost_budget(state, logger)
-      return nil unless @config.cost_budget && state[:total_cost] > @config.cost_budget
-
-      cost = format('%.2f', state[:total_cost])
-      budget = format('%.2f', @config.cost_budget)
-      logger.error("Cost budget exceeded ($#{cost}/$#{budget})")
-      { success: false, phase: 'budget', output: "Cost budget exceeded: $#{cost}" }
-    end
-
-    def skip_reason(step, state)
-      condition = step[:condition]
-
-      return 'audit found blocking issues' if step[:role].to_s == 'merge' && @config.audit_mode && state[:audit_blocked]
-      return 'manual review mode' if step[:role].to_s == 'merge' && @config.manual_review
-      return 'fast-track issue (simple complexity)' if step[:complexity] == 'full' && state[:complexity] == 'simple'
-      if condition == 'has_findings' && !state[:last_review_output]&.include?("\u{1F534}")
-        return 'no blocking findings from review'
-      end
-      return 'no fixes were made' if condition == 'had_fixes' && !state[:had_fixes]
-
-      nil
-    end
-
-    def update_pipeline_state(role, result, state)
-      case role
-      when 'review', 'verify', 'security', 'audit'
-        state[:last_review_output] = result.output
-        if role == 'audit'
-          state[:audit_output] = result.output
-          state[:audit_blocked] = !result.success? || result.output.to_s.match?(/BLOCK|🔴/)
-        end
-      when 'fix'
-        state[:had_fixes] = true
-        state[:last_review_output] = nil
-      when 'implement'
-        state[:last_review_output] = nil
-      end
-    end
-
     def run_final_verification(issue_number, logger:, claude:, chdir:)
       run_verification_with_retry(logger: logger, claude: claude, chdir: chdir,
                                   model: @verification_model) do |body|
         post_step_comment(issue_number, body)
       end
-    end
-
-    def log_cost_summary(total_cost, logger)
-      return if total_cost.zero?
-
-      budget = @config.cost_budget
-      budget_str = budget ? " / $#{format('%.2f', budget)} budget" : ''
-      logger.info("Pipeline cost: $#{format('%.4f', total_cost)}#{budget_str}")
-    end
-
-    def save_report(report, issue_number, success:, failed_phase: nil)
-      report.finish(success: success, failed_phase: failed_phase)
-      report.save(issue_number, project_dir: @config.project_dir)
-    rescue StandardError => e
-      @logger&.debug("Report save failed: #{e.message}")
-      nil
     end
 
     def pipeline_state
