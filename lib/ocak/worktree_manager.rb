@@ -16,6 +16,8 @@ module Ocak
 
     def create(issue_number, setup_command: nil)
       @mutex.synchronize do
+        raise ArgumentError, "Invalid issue number: #{issue_number}" unless issue_number.to_s.match?(/\A\d+\z/)
+
         FileUtils.mkdir_p(@worktree_base)
 
         branch = "auto/issue-#{issue_number}-#{SecureRandom.hex(4)}"
