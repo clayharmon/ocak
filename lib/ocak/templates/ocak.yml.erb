@@ -63,29 +63,38 @@ labels:
 steps:
   - agent: implementer
     role: implement
+    model: sonnet
   - agent: reviewer
     role: review
+    model: opus
   - agent: implementer
     role: fix
     condition: has_findings
+    model: sonnet
   - agent: reviewer
     role: verify
     condition: had_fixes
+    model: opus
   - agent: security_reviewer
     role: security
+    model: sonnet
     complexity: full          # skipped for simple issues and --fast mode
   - agent: implementer
     role: fix
     condition: has_findings
     complexity: full          # skipped for simple issues
+    model: sonnet
   - agent: documenter
     role: document
     complexity: full          # skipped for simple issues
+    model: sonnet
   - agent: auditor
     role: audit
     complexity: full          # skipped for simple issues
+    model: sonnet
   - agent: merger
     role: merge
+    model: sonnet
 
 # Agent file paths — override to use custom agents
 agents:
