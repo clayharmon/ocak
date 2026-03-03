@@ -52,7 +52,12 @@ module Ocak
     end
 
     def run_scoped_lint(logger, chdir:)
-      changed_stdout, = Open3.capture3('git', 'diff', '--name-only', 'main', chdir: chdir)
+      changed_stdout, stderr, status = Open3.capture3('git', 'diff', '--name-only', 'main', chdir: chdir)
+      unless status.success?
+        logger&.warn("Scoped lint skipped — git diff failed: #{stderr[0..200]}")
+        return nil
+      end
+
       changed_files = changed_stdout.lines.map(&:strip).reject(&:empty?)
 
       extensions = lint_extensions_for(@config.language)
