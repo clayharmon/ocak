@@ -132,6 +132,26 @@ RSpec.describe Ocak::RunReport do
       expect(data[:total_cost_usd]).to eq(0.1)
     end
 
+    it 'returns nil and warns when File.write raises Errno::ENOSPC' do
+      report.finish(success: true)
+      allow(File).to receive(:write).and_raise(Errno::ENOSPC, 'No space left on device')
+
+      result = nil
+      expect { result = report.save(42, project_dir: dir) }
+        .to output(/Failed to save report/).to_stderr
+      expect(result).to be_nil
+    end
+
+    it 'returns nil and warns when File.write raises Errno::EACCES' do
+      report.finish(success: true)
+      allow(File).to receive(:write).and_raise(Errno::EACCES, 'Permission denied')
+
+      result = nil
+      expect { result = report.save(42, project_dir: dir) }
+        .to output(/Failed to save report/).to_stderr
+      expect(result).to be_nil
+    end
+
     it 'computes total_duration_s from timestamps' do
       report.finish(success: true)
       path = report.save(42, project_dir: dir)
@@ -201,7 +221,27 @@ RSpec.describe Ocak::RunReport do
 
       reports = nil
       expect { reports = described_class.load_all(project_dir: dir) }
-        .to output(/Skipping malformed report/).to_stderr
+        .to output(/Skipping report/).to_stderr
+
+      expect(reports.size).to eq(1)
+      expect(reports.first[:issue_number]).to eq(1)
+    end
+
+    it 'skips files that raise Errno::EACCES with a warning' do
+      reports_dir = File.join(dir, '.ocak', 'reports')
+      FileUtils.mkdir_p(reports_dir)
+
+      File.write(File.join(reports_dir, 'issue-1-20260228100000.json'),
+                 JSON.generate(issue_number: 1, success: true, steps: []))
+      unreadable_path = File.join(reports_dir, 'issue-2-20260228110000.json')
+      File.write(unreadable_path, JSON.generate(issue_number: 2, success: true, steps: []))
+
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with(unreadable_path).and_raise(Errno::EACCES, 'Permission denied')
+
+      reports = nil
+      expect { reports = described_class.load_all(project_dir: dir) }
+        .to output(/Skipping report/).to_stderr
 
       expect(reports.size).to eq(1)
       expect(reports.first[:issue_number]).to eq(1)
