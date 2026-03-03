@@ -37,37 +37,37 @@ labels:
 steps:
   - agent: implementer
     role: implement
-    model: sonnet
+    model: us.anthropic.claude-sonnet-4-6
   - agent: reviewer
     role: review
-    model: sonnet
+    model: us.anthropic.claude-opus-4-6-v1
   - agent: implementer
     role: fix
     condition: has_findings
-    model: sonnet
+    model: us.anthropic.claude-sonnet-4-6
   - agent: reviewer
     role: verify
     condition: had_fixes
-    model: sonnet
+    model: us.anthropic.claude-opus-4-6-v1
   - agent: security_reviewer
     role: security
-    model: sonnet
+    model: us.anthropic.claude-sonnet-4-6
   - agent: implementer
     role: fix
     condition: has_findings
     complexity: full          # skipped for simple issues
-    model: sonnet
+    model: us.anthropic.claude-sonnet-4-6
   - agent: documenter
     role: document
     complexity: full          # skipped for simple issues
-    model: sonnet
+    model: us.anthropic.claude-sonnet-4-6
   - agent: auditor
     role: audit
     complexity: full          # skipped for simple issues
-    model: sonnet
+    model: us.anthropic.claude-sonnet-4-6
   - agent: merger
     role: merge
-    model: sonnet
+    model: us.anthropic.claude-sonnet-4-6
 
 # Agent file paths — override to use custom agents
 agents:
