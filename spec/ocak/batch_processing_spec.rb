@@ -1,0 +1,282 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+require 'ocak/batch_processing'
+require 'ocak/worktree_manager'
+
+RSpec.describe Ocak::BatchProcessing do
+  let(:test_class) do
+    Class.new do
+      include Ocak::BatchProcessing
+
+      public :process_issues, :run_batch, :process_one_issue, :build_issue_result
+
+      attr_accessor :shutting_down
+
+      def initialize(config:, options: {}, executor: nil)
+        @config = config
+        @options = options
+        @executor = executor
+        @shutting_down = false
+        @active_mutex = Mutex.new
+        @active_issues = []
+      end
+
+      def build_claude(_logger) = nil
+      def build_logger(**) = nil
+      def build_merge_manager(**) = nil
+      def run_pipeline(_issue_number, **_opts) = { success: true }
+      def merge_completed_issue(_result, merger:, issues:, logger:); end
+      def handle_interrupted_issue(_issue_number, _path, _phase, logger:, issues:); end
+      def report_pipeline_failure(_issue_number, _result, issues:, config:, logger:); end
+      def handle_process_error(_error, issue_number:, logger:, issues:); end
+    end
+  end
+
+  let(:config) do
+    instance_double(Ocak::Config,
+                    max_issues_per_run: 3,
+                    max_parallel: 2,
+                    label_ready: 'auto-ready',
+                    label_in_progress: 'in-progress',
+                    label_failed: 'pipeline-failed',
+                    setup_command: nil)
+  end
+  let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, debug: nil) }
+  let(:issues) { instance_double(Ocak::IssueFetcher, transition: nil, comment: nil) }
+  let(:executor) { double('executor') }
+  let(:worktree) { instance_double(Ocak::WorktreeManager::Worktree, path: '/worktrees/42', branch: 'auto/issue-42') }
+  let(:worktrees) { instance_double(Ocak::WorktreeManager, create: worktree, remove: nil) }
+
+  subject(:instance) { test_class.new(config: config, executor: executor) }
+
+  let(:ready_issue) { { 'number' => 42, 'title' => 'Fix bug' } }
+
+  describe '#process_issues' do
+    let(:batch) { { 'issues' => [ready_issue] } }
+
+    before do
+      allow(executor).to receive(:plan_batches).and_return([batch])
+      allow(instance).to receive(:run_batch)
+    end
+
+    it 'caps issues to max_issues_per_run' do
+      many_issues = (1..5).map { |n| { 'number' => n, 'title' => "Issue #{n}" } }
+      allow(executor).to receive(:plan_batches).and_return([{ 'issues' => many_issues[0...2] }])
+
+      instance.process_issues(many_issues, logger: logger, issues: issues)
+
+      expect(executor).to have_received(:plan_batches) do |issues_arg, **|
+        expect(issues_arg.size).to be <= 3
+      end
+    end
+
+    it 'logs warning when capping issues' do
+      many_issues = (1..5).map { |n| { 'number' => n, 'title' => "Issue #{n}" } }
+      allow(executor).to receive(:plan_batches).and_return([])
+
+      instance.process_issues(many_issues, logger: logger, issues: issues)
+
+      expect(logger).to have_received(:warn).with(/Capping to 3 issues/)
+    end
+
+    it 'logs batch info before running' do
+      instance.process_issues([ready_issue], logger: logger, issues: issues)
+      expect(logger).to have_received(:info).with(%r{Running batch 1/1})
+    end
+
+    it 'calls run_batch for each batch' do
+      instance.process_issues([ready_issue], logger: logger, issues: issues)
+      expect(instance).to have_received(:run_batch)
+    end
+
+    it 'logs dry run message and skips run_batch when dry_run option is set' do
+      host = test_class.new(config: config, options: { dry_run: true }, executor: executor)
+      allow(executor).to receive(:plan_batches).and_return([batch])
+      allow(host).to receive(:run_batch)
+
+      host.process_issues([ready_issue], logger: logger, issues: issues)
+
+      expect(host).not_to have_received(:run_batch)
+      expect(logger).to have_received(:info).with(/DRY RUN/)
+    end
+  end
+
+  describe '#run_batch' do
+    before do
+      allow(Ocak::WorktreeManager).to receive(:new).and_return(worktrees)
+      allow(instance).to receive(:process_one_issue).and_return(
+        { issue_number: 42, success: true, worktree: worktree }
+      )
+      allow(instance).to receive(:merge_completed_issue)
+      allow(instance).to receive(:build_merge_manager).and_return(nil)
+    end
+
+    it 'processes all issues and calls merge for successful ones' do
+      instance.run_batch([ready_issue], logger: logger, issues: issues)
+      expect(instance).to have_received(:merge_completed_issue)
+    end
+
+    it 'removes worktree for completed issues' do
+      instance.run_batch([ready_issue], logger: logger, issues: issues)
+      expect(worktrees).to have_received(:remove).with(worktree)
+    end
+
+    it 'skips merging when shutting_down is true' do
+      instance.shutting_down = true
+      instance.run_batch([ready_issue], logger: logger, issues: issues)
+      expect(instance).not_to have_received(:merge_completed_issue)
+    end
+
+    it 'skips worktree removal for interrupted results' do
+      allow(instance).to receive(:process_one_issue).and_return(
+        { issue_number: 42, success: false, worktree: worktree, interrupted: true }
+      )
+      instance.run_batch([ready_issue], logger: logger, issues: issues)
+      expect(worktrees).not_to have_received(:remove)
+    end
+
+    it 'logs warning when worktree removal fails' do
+      allow(worktrees).to receive(:remove).and_raise(StandardError, 'locked')
+      instance.run_batch([ready_issue], logger: logger, issues: issues)
+      expect(logger).to have_received(:warn).with(/Failed to clean worktree/)
+    end
+
+    it 'skips worktree removal when result has no worktree' do
+      allow(instance).to receive(:process_one_issue).and_return(
+        { issue_number: 42, success: false, worktree: nil }
+      )
+      instance.run_batch([ready_issue], logger: logger, issues: issues)
+      expect(worktrees).not_to have_received(:remove)
+    end
+
+    it 'raises programming error if one is present in results' do
+      error = NoMethodError.new('undefined method')
+      allow(instance).to receive(:process_one_issue).and_return(
+        { issue_number: 42, success: false, worktree: nil, programming_error: error }
+      )
+      expect { instance.run_batch([ready_issue], logger: logger, issues: issues) }.to raise_error(NoMethodError)
+    end
+  end
+
+  describe '#process_one_issue' do
+    let(:claude) { instance_double(Ocak::ClaudeRunner) }
+    let(:success_pipeline_result) { { success: true, interrupted: false } }
+
+    before do
+      allow(Ocak::WorktreeManager).to receive(:new).and_return(worktrees)
+      allow(instance).to receive(:build_logger).and_return(logger)
+      allow(instance).to receive(:build_claude).and_return(claude)
+      allow(instance).to receive(:run_pipeline).and_return(success_pipeline_result)
+      allow(instance).to receive(:build_issue_result).and_return(
+        { issue_number: 42, success: true, worktree: worktree }
+      )
+    end
+
+    it 'transitions issue to in-progress' do
+      instance.process_one_issue(ready_issue, worktrees: worktrees, issues: issues)
+      expect(issues).to have_received(:transition).with(42, from: 'auto-ready', to: 'in-progress')
+    end
+
+    it 'creates a worktree for the issue' do
+      instance.process_one_issue(ready_issue, worktrees: worktrees, issues: issues)
+      expect(worktrees).to have_received(:create).with(42, setup_command: nil)
+    end
+
+    it 'calls run_pipeline with the issue number' do
+      instance.process_one_issue(ready_issue, worktrees: worktrees, issues: issues)
+      expect(instance).to have_received(:run_pipeline).with(42, anything)
+    end
+
+    it 'uses simple complexity when fast option is set' do
+      host = test_class.new(config: config, options: { fast: true }, executor: executor)
+      allow(host).to receive(:build_logger).and_return(logger)
+      allow(host).to receive(:build_claude).and_return(claude)
+      allow(host).to receive(:run_pipeline).and_return(success_pipeline_result)
+      allow(host).to receive(:build_issue_result).and_return({ issue_number: 42, success: true, worktree: worktree })
+
+      host.process_one_issue(ready_issue, worktrees: worktrees, issues: issues)
+
+      expect(host).to have_received(:run_pipeline) do |_num, **opts|
+        expect(opts[:complexity]).to eq('simple')
+      end
+    end
+
+    it 'returns error result on StandardError' do
+      allow(instance).to receive(:run_pipeline).and_raise(StandardError, 'unexpected')
+      allow(instance).to receive(:handle_process_error)
+
+      result = instance.process_one_issue(ready_issue, worktrees: worktrees, issues: issues)
+
+      expect(result[:success]).to be false
+      expect(result[:error]).to eq('unexpected')
+    end
+
+    it 'marks NameError as programming_error' do
+      error = NoMethodError.new('undefined method')
+      allow(instance).to receive(:run_pipeline).and_raise(error)
+      allow(instance).to receive(:handle_process_error)
+
+      result = instance.process_one_issue(ready_issue, worktrees: worktrees, issues: issues)
+
+      expect(result[:programming_error]).to eq(error)
+    end
+
+    it 'removes issue from active_issues after processing' do
+      active_issues = instance.instance_variable_get(:@active_issues)
+      instance.process_one_issue(ready_issue, worktrees: worktrees, issues: issues)
+      expect(active_issues).not_to include(42)
+    end
+  end
+
+  describe '#build_issue_result' do
+    let(:issues) { instance_double(Ocak::IssueFetcher, transition: nil, comment: nil) }
+
+    before do
+      allow(instance).to receive(:handle_interrupted_issue)
+      allow(instance).to receive(:report_pipeline_failure)
+      allow(instance).to receive(:build_logger).and_return(logger)
+    end
+
+    it 'returns interrupted result when result is interrupted' do
+      result = { interrupted: true, phase: 'implement' }
+      outcome = instance.build_issue_result(result, issue_number: 42, worktree: worktree,
+                                                    issues: issues, logger: logger)
+      expect(outcome).to eq({ issue_number: 42, success: false, worktree: worktree, interrupted: true })
+    end
+
+    it 'calls handle_interrupted_issue when interrupted' do
+      result = { interrupted: true, phase: 'implement' }
+      instance.build_issue_result(result, issue_number: 42, worktree: worktree, issues: issues, logger: logger)
+      expect(instance).to have_received(:handle_interrupted_issue)
+        .with(42, worktree.path, 'implement', logger: logger, issues: issues)
+    end
+
+    it 'returns success result with audit info when result succeeds' do
+      result = { success: true, audit_blocked: false, audit_output: nil }
+      outcome = instance.build_issue_result(result, issue_number: 42, worktree: worktree,
+                                                    issues: issues, logger: logger)
+      expect(outcome).to include(issue_number: 42, success: true, worktree: worktree, audit_blocked: false)
+    end
+
+    it 'includes audit_blocked in success result' do
+      result = { success: true, audit_blocked: true, audit_output: '🔴 blocked' }
+      outcome = instance.build_issue_result(result, issue_number: 42, worktree: worktree,
+                                                    issues: issues, logger: logger)
+      expect(outcome[:audit_blocked]).to be true
+    end
+
+    it 'calls report_pipeline_failure when result fails' do
+      result = { success: false, phase: 'implement', output: 'Error' }
+      instance.build_issue_result(result, issue_number: 42, worktree: worktree, issues: issues, logger: logger)
+      expect(instance).to have_received(:report_pipeline_failure)
+    end
+
+    it 'returns failure result without audit info when result fails' do
+      result = { success: false, phase: 'implement', output: 'Error' }
+      outcome = instance.build_issue_result(result, issue_number: 42, worktree: worktree,
+                                                    issues: issues, logger: logger)
+      expect(outcome).to eq({ issue_number: 42, success: false, worktree: worktree })
+    end
+  end
+end
