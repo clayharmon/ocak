@@ -25,6 +25,22 @@ RSpec.describe Ocak::WorktreeManager do
       expect(worktree.issue_number).to eq(42)
     end
 
+    it 'raises ArgumentError for path traversal issue numbers' do
+      expect { manager.create('../evil') }.to raise_error(ArgumentError, /Invalid issue number/)
+    end
+
+    it 'raises ArgumentError for shell metacharacter issue numbers' do
+      expect { manager.create('123; rm') }.to raise_error(ArgumentError, /Invalid issue number/)
+    end
+
+    it 'raises ArgumentError for nil issue numbers' do
+      expect { manager.create(nil) }.to raise_error(ArgumentError, /Invalid issue number/)
+    end
+
+    it 'raises ArgumentError for empty string issue numbers' do
+      expect { manager.create('') }.to raise_error(ArgumentError, /Invalid issue number/)
+    end
+
     it 'raises on failure' do
       allow(FileUtils).to receive(:mkdir_p)
       allow(Open3).to receive(:capture3)
