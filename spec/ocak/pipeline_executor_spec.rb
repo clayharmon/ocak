@@ -110,7 +110,7 @@ RSpec.describe Ocak::PipelineExecutor do
 
     it 'passes step model override to claude runner' do
       steps = [
-        { 'agent' => 'implementer', 'role' => 'implement', 'model' => 'us.anthropic.claude-sonnet-4-6-v1' }
+        { 'agent' => 'implementer', 'role' => 'implement', 'model' => 'sonnet' }
       ]
       allow(config).to receive(:steps).and_return(steps)
       allow(claude).to receive(:run_agent).and_return(success_result)
@@ -118,7 +118,7 @@ RSpec.describe Ocak::PipelineExecutor do
       executor.run_pipeline(42, logger: logger, claude: claude)
 
       expect(claude).to have_received(:run_agent)
-        .with('implementer', anything, chdir: anything, model: 'us.anthropic.claude-sonnet-4-6-v1')
+        .with('implementer', anything, chdir: anything, model: 'sonnet')
     end
 
     it 'does not pass model when step has no model override' do
@@ -1056,8 +1056,8 @@ RSpec.describe Ocak::PipelineExecutor do
   describe 'custom steps parameter' do
     let(:custom_steps) do
       [
-        { agent: 'implementer', role: 'implement', model: 'us.anthropic.claude-sonnet-4-6-v1' },
-        { agent: 'reviewer', role: 'review', model: 'us.anthropic.claude-haiku-4-5-20251001' }
+        { agent: 'implementer', role: 'implement', model: 'sonnet' },
+        { agent: 'reviewer', role: 'review', model: 'haiku' }
       ]
     end
 
@@ -1068,9 +1068,9 @@ RSpec.describe Ocak::PipelineExecutor do
 
       expect(result[:success]).to be true
       expect(claude).to have_received(:run_agent)
-        .with('implementer', anything, chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
+        .with('implementer', anything, chdir: '/project', model: 'sonnet')
       expect(claude).to have_received(:run_agent)
-        .with('reviewer', anything, chdir: '/project', model: 'us.anthropic.claude-haiku-4-5-20251001')
+        .with('reviewer', anything, chdir: '/project', model: 'haiku')
     end
 
     it 'does not run config steps when custom steps are provided' do
@@ -1178,10 +1178,10 @@ RSpec.describe Ocak::PipelineExecutor do
         .and_return(['FAIL', '', instance_double(Process::Status, success?: false)])
 
       executor_with_issues.run_pipeline(42, logger: logger, claude: claude,
-                                            verification_model: 'us.anthropic.claude-sonnet-4-6-v1')
+                                            verification_model: 'sonnet')
 
       expect(claude).to have_received(:run_agent)
-        .with('implementer', match(/Fix these/), chdir: '/project', model: 'us.anthropic.claude-sonnet-4-6-v1')
+        .with('implementer', match(/Fix these/), chdir: '/project', model: 'sonnet')
     end
 
     it 'does not pass model when verification_model is nil' do
