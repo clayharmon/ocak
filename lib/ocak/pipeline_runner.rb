@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
+require_relative 'batch_processing'
 require_relative 'failure_reporting'
+require_relative 'instance_builders'
 require_relative 'merge_orchestration'
 require_relative 'pipeline_executor'
 require_relative 'process_registry'
+require_relative 'shutdown_handling'
 require_relative 'git_utils'
 require_relative 'issue_backend'
 require_relative 'local_merge_manager'
@@ -11,8 +14,11 @@ require_relative 'reready_processor'
 
 module Ocak
   class PipelineRunner
+    include BatchProcessing
     include FailureReporting
+    include InstanceBuilders
     include MergeOrchestration
+    include ShutdownHandling
 
     attr_reader :registry
 
@@ -38,28 +44,8 @@ module Ocak
                                            skip_steps: skip_steps, complexity: complexity)
     end
 
-    def shutdown!
-      count = @active_mutex.synchronize { @shutdown_count += 1 }
-
-      if count >= 2
-        force_shutdown!
-      else
-        graceful_shutdown!
-      end
-    end
-
     def shutting_down?
       @shutting_down
-    end
-
-    def print_shutdown_summary
-      issues = @active_mutex.synchronize { @interrupted_issues.dup }
-      return if issues.empty?
-
-      warn "\nInterrupted issues:"
-      issues.each do |issue_number|
-        warn "  - Issue ##{issue_number}: ocak resume --issue #{issue_number}"
-      end
     end
 
     private
@@ -124,99 +110,6 @@ module Ocak
       end
     end
 
-    def process_issues(ready_issues, logger:, issues:)
-      if ready_issues.size > @config.max_issues_per_run
-        logger.warn("Capping to #{@config.max_issues_per_run} issues (found #{ready_issues.size})")
-        ready_issues = ready_issues.first(@config.max_issues_per_run)
-      end
-
-      claude = build_claude(logger)
-      batches = @executor.plan_batches(ready_issues, logger: logger, claude: claude)
-
-      batches.each_with_index do |batch, idx|
-        batch_issues = batch['issues'][0...@config.max_parallel]
-        logger.info("Running batch #{idx + 1}/#{batches.size} (#{batch_issues.size} issues)")
-
-        if @options[:dry_run]
-          batch_issues.each { |i| logger.info("[DRY RUN] Would process issue ##{i['number']}: #{i['title']}") }
-          next
-        end
-
-        run_batch(batch_issues, logger: logger, issues: issues)
-      end
-    end
-
-    def run_batch(batch_issues, logger:, issues:)
-      worktrees = WorktreeManager.new(config: @config, logger: logger)
-
-      threads = batch_issues.map do |issue|
-        Thread.new { process_one_issue(issue, worktrees: worktrees, issues: issues) }
-      end
-      results = threads.map(&:value)
-
-      unless @shutting_down
-        merger = build_merge_manager(logger: logger, issues: issues)
-        results.select { |r| r[:success] }.each do |result|
-          merge_completed_issue(result, merger: merger, issues: issues, logger: logger)
-        end
-      end
-
-      results.each do |result|
-        next unless result[:worktree]
-        next if result[:interrupted]
-
-        worktrees.remove(result[:worktree])
-      rescue StandardError => e
-        logger.warn("Failed to clean worktree for ##{result[:issue_number]}: #{e.message}")
-      end
-
-      programming_error = results.find { |r| r[:programming_error] }&.dig(:programming_error)
-      raise programming_error if programming_error
-    end
-
-    def process_one_issue(issue, worktrees:, issues:)
-      issue_number = issue['number']
-      logger = build_logger(issue_number: issue_number)
-      claude = build_claude(logger)
-      worktree = nil
-
-      @active_mutex.synchronize do
-        @active_issues << issue_number
-      end
-      issues.transition(issue_number, from: @config.label_ready, to: @config.label_in_progress)
-      worktree = worktrees.create(issue_number, setup_command: @config.setup_command)
-      logger.info("Created worktree at #{worktree.path} (branch: #{worktree.branch})")
-
-      complexity = @options[:fast] ? 'simple' : issue.fetch('complexity', 'full')
-      result = run_pipeline(issue_number, logger: logger, claude: claude, chdir: worktree.path,
-                                          complexity: complexity)
-
-      build_issue_result(result, issue_number: issue_number, worktree: worktree, issues: issues,
-                                 logger: logger)
-    rescue StandardError => e
-      handle_process_error(e, issue_number: issue_number, logger: logger, issues: issues)
-      result = { issue_number: issue_number, success: false, worktree: worktree, error: e.message }
-      # NameError includes NoMethodError
-      result[:programming_error] = e if e.is_a?(NameError) || e.is_a?(TypeError)
-      result
-    ensure
-      @active_mutex.synchronize { @active_issues.delete(issue_number) }
-    end
-
-    def build_issue_result(result, issue_number:, worktree:, issues:, logger: nil)
-      if result[:interrupted]
-        handle_interrupted_issue(issue_number, worktree&.path, result[:phase],
-                                 logger: logger || build_logger(issue_number: issue_number), issues: issues)
-        { issue_number: issue_number, success: false, worktree: worktree, interrupted: true }
-      elsif result[:success]
-        { issue_number: issue_number, success: true, worktree: worktree,
-          audit_blocked: result[:audit_blocked], audit_output: result[:audit_output] }
-      else
-        report_pipeline_failure(issue_number, result, issues: issues, config: @config, logger: logger)
-        { issue_number: issue_number, success: false, worktree: worktree }
-      end
-    end
-
     def process_reready_prs(logger:, issues:)
       reready = issues.fetch_reready_prs
       return if reready.empty?
@@ -230,83 +123,6 @@ module Ocak
 
         processor.process(pr)
       end
-    end
-
-    def cleanup_stale_worktrees(logger)
-      worktrees = WorktreeManager.new(config: @config, logger: logger)
-      removed = worktrees.clean_stale
-      removed.each { |path| logger.info("Cleaned stale worktree: #{path}") }
-    rescue StandardError => e
-      logger.warn("Stale worktree cleanup failed: #{e.message}")
-    end
-
-    def ensure_labels(issues, logger)
-      issues.ensure_labels(@config.all_labels)
-    rescue StandardError => e
-      logger.warn("Failed to ensure labels: #{e.message}")
-    end
-
-    def build_logger(issue_number: nil)
-      PipelineLogger.new(log_dir: File.join(@config.project_dir, @config.log_dir),
-                         issue_number: issue_number, log_level: @options.fetch(:log_level, :normal))
-    end
-
-    def build_merge_manager(logger:, issues:)
-      if issues.is_a?(LocalIssueFetcher) && !gh_available?
-        LocalMergeManager.new(config: @config, logger: logger, issues: issues)
-      else
-        MergeManager.new(config: @config, claude: build_claude(logger), logger: logger,
-                         issues: issues, watch: @watch_formatter)
-      end
-    end
-
-    def gh_available?
-      _, _, status = Open3.capture3('gh', 'repo', 'view', '--json', 'name', chdir: @config.project_dir)
-      status.success?
-    rescue Errno::ENOENT
-      false
-    end
-
-    def build_claude(logger)
-      ClaudeRunner.new(config: @config, logger: logger, watch: @watch_formatter, registry: @registry)
-    end
-
-    def graceful_shutdown!
-      @shutting_down = true
-      warn "\nGraceful shutdown initiated — finishing current agent step(s)..."
-    end
-
-    def force_shutdown!
-      @shutting_down = true
-      warn "\nForce shutdown — killing active processes..."
-      @registry.kill_all
-    end
-
-    def handle_process_error(error, issue_number:, logger:, issues:)
-      logger.error("Unexpected #{error.class}: #{error.message}\n#{error.backtrace&.first(5)&.join("\n")}")
-      logger.debug("Full backtrace:\n#{error.backtrace&.join("\n")}")
-      issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
-      begin
-        issues.comment(issue_number, "Unexpected #{error.class}: #{error.message}")
-      rescue StandardError => e
-        logger&.debug("Comment posting failed: #{e.message}")
-        nil
-      end
-    end
-
-    def handle_interrupted_issue(issue_number, worktree_path, step_name, logger:, issues:)
-      if worktree_path
-        GitUtils.commit_changes(chdir: worktree_path,
-                                message: "wip: pipeline interrupted after step #{step_name} for issue ##{issue_number}",
-                                logger: logger)
-      end
-      issues&.transition(issue_number, from: @config.label_in_progress, to: @config.label_ready)
-      issues&.comment(issue_number,
-                      "\u{26A0}\u{FE0F} Pipeline interrupted after #{step_name}. " \
-                      "Resume with `ocak resume --issue #{issue_number}`.")
-      @active_mutex.synchronize { @interrupted_issues << issue_number }
-    rescue StandardError => e
-      logger.warn("Failed to handle interrupted issue ##{issue_number}: #{e.message}")
     end
   end
 end
