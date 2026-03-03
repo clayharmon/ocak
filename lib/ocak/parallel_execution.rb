@@ -25,7 +25,7 @@ module Ocak
                                                           chdir: chdir, mutex: mutex)
         rescue StandardError => e
           logger.error("#{step[:role]} thread failed: #{e.message}")
-          nil
+          { success: false, phase: step[:role].to_s, output: "Thread error: #{e.message}" }
         end
       end
 

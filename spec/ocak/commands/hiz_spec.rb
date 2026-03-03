@@ -650,16 +650,16 @@ RSpec.describe Ocak::Commands::Hiz do
         .with(42, %r{\*\*Pipeline complete\*\*.*3/3 steps run.*\$0\.18 total})
     end
 
-    it 'accumulates costs correctly when one review thread fails' do
+    it 'reports failure with accumulated costs when one review thread fails' do
       allow(claude).to receive(:run_agent)
         .with('reviewer', anything, chdir: '/project', model: 'haiku')
         .and_raise(StandardError, 'connection reset')
 
       command.call(issue: '42')
 
-      # Only implementer (0.10) + security (0.03) = 0.13; steps_run = 2
+      # Pipeline fails at review; implementer (0.10) + security (0.03) = 0.13; steps_run = 2
       expect(issues).to have_received(:comment)
-        .with(42, %r{\*\*Pipeline complete\*\*.*2/3 steps run.*\$0\.13 total})
+        .with(42, %r{\*\*Pipeline failed\*\*.*review.*2/3 steps completed.*\$0\.13 total})
     end
   end
   describe 'label transitions' do
