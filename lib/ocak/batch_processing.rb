@@ -71,7 +71,7 @@ module Ocak
 
       complexity = @options[:fast] ? 'simple' : issue.fetch('complexity', 'full')
       result = run_pipeline(issue_number, logger: logger, claude: claude, chdir: worktree.path,
-                                          complexity: complexity)
+                                          complexity: complexity, skip_merge: true)
 
       build_issue_result(result, issue_number: issue_number, worktree: worktree, issues: issues,
                                  logger: logger)

@@ -30,11 +30,13 @@ module Ocak
 
     def run_pipeline(issue_number, logger:, claude:, chdir: nil, skip_steps: [], complexity: 'full', # rubocop:disable Metrics/ParameterLists
                      steps: nil, verification_model: nil,
-                     post_start_comment: true, post_summary_comment: true)
+                     post_start_comment: true, post_summary_comment: true,
+                     skip_merge: false)
       @logger = logger
       @custom_steps = steps
       @verification_model = verification_model
       @post_summary_comment = post_summary_comment
+      @skip_merge = skip_merge
       chdir ||= @config.project_dir
       logger.info("=== Starting pipeline for issue ##{issue_number} (#{complexity}) ===")
 

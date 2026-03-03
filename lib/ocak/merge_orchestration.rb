@@ -28,8 +28,10 @@ module Ocak
       elsif @config.manual_review
         handle_single_manual_review(issue_number, logger: logger, claude: claude, issues: issues)
       else
-        claude.run_agent('merger', "Create a PR, merge it, and close issue ##{issue_number}",
-                         chdir: @config.project_dir)
+        unless pipeline_has_merge_step?
+          claude.run_agent('merger', "Create a PR, merge it, and close issue ##{issue_number}",
+                           chdir: @config.project_dir)
+        end
         issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_completed)
         logger.info("Issue ##{issue_number} completed successfully")
       end
@@ -86,6 +88,10 @@ module Ocak
 
       issues.pr_comment(pr_number, "## Audit Report\n\n#{audit_output}")
       logger.info("Posted audit comment on PR ##{pr_number}")
+    end
+
+    def pipeline_has_merge_step?
+      @config.steps.any? { |s| s[:role].to_s == 'merge' || s['role'].to_s == 'merge' }
     end
 
     def find_pr_for_branch(logger:)

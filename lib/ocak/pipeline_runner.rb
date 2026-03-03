@@ -39,9 +39,11 @@ module Ocak
       @options[:single] ? run_single(@options[:single]) : run_loop
     end
 
-    def run_pipeline(issue_number, logger:, claude:, chdir: nil, skip_steps: [], complexity: 'full')
+    def run_pipeline(issue_number, logger:, claude:, chdir: nil, skip_steps: [], complexity: 'full', # rubocop:disable Metrics/ParameterLists
+                     skip_merge: false)
       @executor.run_pipeline(issue_number, logger: logger, claude: claude, chdir: chdir,
-                                           skip_steps: skip_steps, complexity: complexity)
+                                           skip_steps: skip_steps, complexity: complexity,
+                                           skip_merge: skip_merge)
     end
 
     def shutting_down?

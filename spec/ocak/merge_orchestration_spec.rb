@@ -17,7 +17,8 @@ RSpec.describe Ocak::MergeOrchestration do
       # Expose private methods for testing
       public :merge_completed_issue, :handle_single_success, :handle_single_manual_review,
              :handle_batch_manual_review, :handle_single_audit_blocked, :handle_batch_audit,
-             :create_pr_with_audit, :post_audit_comment_single, :find_pr_for_branch
+             :create_pr_with_audit, :post_audit_comment_single, :find_pr_for_branch,
+             :pipeline_has_merge_step?
     end
   end
 
@@ -28,7 +29,15 @@ RSpec.describe Ocak::MergeOrchestration do
                     label_completed: 'completed',
                     label_failed: 'pipeline-failed',
                     label_awaiting_review: 'auto-pending-human',
-                    manual_review: false)
+                    manual_review: false,
+                    steps: steps_config)
+  end
+
+  let(:steps_config) do
+    [
+      { 'agent' => 'implementer', 'role' => 'implement' },
+      { 'agent' => 'reviewer', 'role' => 'review' }
+    ]
   end
 
   let(:host) { host_class.new(config: config) }
@@ -115,6 +124,68 @@ RSpec.describe Ocak::MergeOrchestration do
 
       expect(issues).to have_received(:transition).with(42, from: 'in-progress', to: 'auto-pending-human')
       expect(issues).to have_received(:pr_comment).with(99, /Audit Report/)
+    end
+
+    context 'when pipeline steps include a merge step' do
+      let(:steps_config) do
+        [
+          { 'agent' => 'implementer', 'role' => 'implement' },
+          { 'agent' => 'merger', 'role' => 'merge' }
+        ]
+      end
+
+      it 'skips the redundant merger agent call' do
+        allow(claude).to receive(:run_agent)
+
+        host.handle_single_success(42, { success: true }, logger: logger, claude: claude, issues: issues)
+
+        expect(claude).not_to have_received(:run_agent)
+      end
+
+      it 'still transitions to completed' do
+        host.handle_single_success(42, { success: true }, logger: logger, claude: claude, issues: issues)
+
+        expect(issues).to have_received(:transition).with(42, from: 'in-progress', to: 'completed')
+      end
+    end
+
+    context 'when pipeline steps include a merge step with symbol keys' do
+      let(:steps_config) do
+        [
+          { agent: 'implementer', role: 'implement' },
+          { agent: 'merger', role: 'merge' }
+        ]
+      end
+
+      it 'skips the redundant merger agent call' do
+        allow(claude).to receive(:run_agent)
+
+        host.handle_single_success(42, { success: true }, logger: logger, claude: claude, issues: issues)
+
+        expect(claude).not_to have_received(:run_agent)
+      end
+    end
+  end
+
+  describe '#pipeline_has_merge_step?' do
+    it 'returns false when no merge step exists' do
+      expect(host.pipeline_has_merge_step?).to be false
+    end
+
+    context 'with string-keyed merge step' do
+      let(:steps_config) { [{ 'role' => 'merge' }] }
+
+      it 'returns true' do
+        expect(host.pipeline_has_merge_step?).to be true
+      end
+    end
+
+    context 'with symbol-keyed merge step' do
+      let(:steps_config) { [{ role: 'merge' }] }
+
+      it 'returns true' do
+        expect(host.pipeline_has_merge_step?).to be true
+      end
     end
   end
 
