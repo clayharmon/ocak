@@ -28,18 +28,18 @@ module Ocak
       'planner' => 'Read,Glob,Grep,Bash'
     }.freeze
 
-    MODEL_HAIKU  = ENV.fetch('OCAK_MODEL_HAIKU',  'us.anthropic.claude-haiku-4-5-20251001')
-    MODEL_SONNET = ENV.fetch('OCAK_MODEL_SONNET', 'us.anthropic.claude-sonnet-4-6-v1')
-    MODEL_OPUS   = ENV.fetch('OCAK_MODEL_OPUS',   'us.anthropic.claude-opus-4-6-v1')
+    MODEL_HAIKU  = ENV.fetch('OCAK_MODEL_HAIKU',  'haiku')
+    MODEL_SONNET = ENV.fetch('OCAK_MODEL_SONNET', 'sonnet')
+    MODEL_OPUS   = ENV.fetch('OCAK_MODEL_OPUS',   'opus')
 
     AGENT_MODELS = {
-      'planner' => MODEL_HAIKU,
-      'reviewer' => MODEL_SONNET,
+      'planner' => MODEL_SONNET,
+      'reviewer' => MODEL_OPUS,
       'security-reviewer' => MODEL_SONNET,
       'auditor' => MODEL_SONNET,
       'documenter' => MODEL_SONNET,
       'merger' => MODEL_SONNET,
-      'implementer' => MODEL_OPUS,
+      'implementer' => MODEL_SONNET,
       'pipeline' => MODEL_OPUS
     }.freeze
 
