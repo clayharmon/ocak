@@ -13,21 +13,24 @@ lib/ocak/
 ├── monorepo_detector.rb   # MonorepoDetector module (included by StackDetector) — npm/pnpm/cargo/go workspace detection
 ├── agent_generator.rb     # Generates agent/skill/hook files from ERB templates, optionally enhanced via claude -p
 ├── pipeline_runner.rb     # Orchestration: poll → plan → worktree → delegate to executor → merge
+├── batch_processing.rb    # BatchProcessing module (included by PipelineRunner) — process_issues, run_batch, process_one_issue, build_issue_result
+├── instance_builders.rb   # InstanceBuilders module (included by PipelineRunner) — factory methods for logger, claude, merge manager; setup helpers
+├── shutdown_handling.rb   # ShutdownHandling module (included by PipelineRunner) — graceful/force shutdown, interrupt/error handling, summary
+├── merge_orchestration.rb # MergeOrchestration module (included by PipelineRunner) — PR creation, audit blocking, manual review, label transitions
+├── failure_reporting.rb   # FailureReporting module — shared label transition + failure comment posting; included by PipelineRunner and Commands::Resume
 ├── pipeline_executor.rb   # Orchestrates pipeline step execution; includes ParallelExecution, StateManagement, StepExecution, Verification, Planner, StepComments
 ├── parallel_execution.rb  # ParallelExecution module (included by PipelineExecutor) — collect_parallel_group, run_parallel_group, sync
 ├── state_management.rb    # StateManagement module (included by PipelineExecutor) — accumulate_state, save_step_progress, write_step_output, check_step_failure, check_cost_budget, update_pipeline_state, log_cost_summary, save_report
 ├── step_execution.rb      # StepExecution module (included by PipelineExecutor) — run_single_step, handle_already_completed, record_skipped_step, execute_step, skip_reason
+├── step_comments.rb       # StepComments module — shared post_step_comment / post_step_completion_comment; included by Hiz and PipelineExecutor
 ├── claude_runner.rb       # Wraps `claude -p` with stream-json parsing (StreamParser, AgentResult)
 ├── issue_fetcher.rb       # GitHub CLI wrapper for all issue data access — listing, labeling, commenting, label creation, view
 ├── worktree_manager.rb    # Git worktree create/remove/list/clean
 ├── merge_manager.rb       # Sequential rebase + test + push, then delegates to merger agent
-├── merge_orchestration.rb # MergeOrchestration module (included by PipelineRunner) — PR creation, audit blocking, manual review, label transitions
 ├── git_utils.rb           # Shared git helpers — commit_changes (porcelain check → add -A → commit with exit-status checks), safe_branch_name? (validates branch names against flag injection and .. traversal)
 ├── planner.rb             # Batch planning: groups issues for parallel/sequential execution
 ├── pipeline_state.rb      # Persists per-issue pipeline progress for resume support
 ├── run_report.rb          # Writes per-run JSON reports to .ocak/reports/; RunReport#record_step, #finish, #save, .load_all
-├── step_comments.rb       # StepComments module — shared post_step_comment / post_step_completion_comment; included by Hiz and PipelineExecutor
-├── failure_reporting.rb   # FailureReporting module — shared label transition + failure comment posting; included by PipelineRunner and Commands::Resume
 ├── verification.rb        # Final verification checks (tests + scoped lint) extracted module
 ├── process_runner.rb      # Subprocess runner with streaming line output and timeout support
 ├── process_registry.rb    # Thread-safe PID registry for subprocess tracking during shutdown
