@@ -30,7 +30,7 @@ module Ocak
       issue_json = JSON.generate(issues.map { |i| { number: i['number'], title: i['title'] } })
       result = claude.run_agent(
         'planner',
-        "Analyze these issues and output parallelization batches as JSON:\n\n#{issue_json}"
+        "Analyze these issues and output parallelization batches as JSON:\n\n<issue_data>\n#{issue_json}\n</issue_data>"
       )
 
       unless result.success?
