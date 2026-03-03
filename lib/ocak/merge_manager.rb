@@ -3,9 +3,12 @@
 require 'open3'
 require 'shellwords'
 require_relative 'git_utils'
+require_relative 'command_runner'
 
 module Ocak
   class MergeManager
+    include CommandRunner
+
     def initialize(config:, claude:, logger:, issues:, watch: nil)
       @config = config
       @claude = claude
@@ -77,20 +80,20 @@ module Ocak
                 '_This PR was created in manual review mode. ' \
                 'Review and label `auto-reready` to trigger automated fixes based on your feedback._'
 
-      stdout, stderr, status = Open3.capture3(
-        'gh', 'pr', 'create',
+      result = run_gh(
+        'pr', 'create',
         '--title', pr_title,
         '--body', pr_body,
         '--head', worktree.branch,
         chdir: worktree.path
       )
 
-      unless status.success?
-        @logger.error("PR creation failed: #{stderr}")
+      unless result.success?
+        @logger.error("PR creation failed: #{result.error}")
         return nil
       end
 
-      extract_pr_number(stdout)
+      extract_pr_number(result.stdout)
     end
 
     def fetch_issue_title(issue_number)
@@ -112,39 +115,39 @@ module Ocak
     end
 
     def rebase_onto_main(worktree)
-      _, fetch_stderr, fetch_status = git('fetch', 'origin', 'main', chdir: worktree.path)
-      unless fetch_status.success?
-        @logger.error("git fetch origin main failed: #{fetch_stderr[0..200]}")
+      fetch_result = run_git('fetch', 'origin', 'main', chdir: worktree.path)
+      unless fetch_result.success?
+        @logger.error("git fetch origin main failed: #{fetch_result.error}")
         return false
       end
 
-      _, stderr, status = git('rebase', 'origin/main', chdir: worktree.path)
+      rebase_result = run_git('rebase', 'origin/main', chdir: worktree.path)
 
-      return true if status.success?
+      return true if rebase_result.success?
 
-      @logger.warn("Rebase conflict, aborting rebase: #{stderr}")
-      _, abort_stderr, abort_status = git('rebase', '--abort', chdir: worktree.path)
-      @logger.warn("git rebase --abort failed: #{abort_stderr}") unless abort_status.success?
+      @logger.warn("Rebase conflict, aborting rebase: #{rebase_result.error}")
+      abort_result = run_git('rebase', '--abort', chdir: worktree.path)
+      @logger.warn("git rebase --abort failed: #{abort_result.error}") unless abort_result.success?
 
       # Fall back to merge strategy
       @logger.info('Attempting merge strategy instead...')
-      _, merge_stderr, merge_status = git('merge', 'origin/main', '--no-edit', chdir: worktree.path)
+      merge_result = run_git('merge', 'origin/main', '--no-edit', chdir: worktree.path)
 
-      return true if merge_status.success?
+      return true if merge_result.success?
 
       # Merge also has conflicts — try to resolve via agent
-      @logger.warn("Merge conflict, attempting agent resolution: #{merge_stderr}")
+      @logger.warn("Merge conflict, attempting agent resolution: #{merge_result.error}")
       resolve_conflicts_via_agent(worktree)
     end
 
     def resolve_conflicts_via_agent(worktree)
       # Get list of conflicting files
-      stdout, = git('diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
-      conflicting = stdout.lines.map(&:strip).reject(&:empty?)
+      diff_result = run_git('diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
+      conflicting = diff_result.stdout.lines.map(&:strip).reject(&:empty?)
 
       if conflicting.empty?
         @logger.warn('No conflicting files found, aborting merge')
-        git('merge', '--abort', chdir: worktree.path)
+        run_git('merge', '--abort', chdir: worktree.path)
         return false
       end
 
@@ -158,11 +161,11 @@ module Ocak
 
       if result.success?
         # Check if all conflicts resolved
-        remaining, = git('diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
-        if remaining.strip.empty?
-          _, commit_stderr, commit_status = git('commit', '--no-edit', chdir: worktree.path)
-          unless commit_status.success?
-            @logger.error("Commit after conflict resolution failed: #{commit_stderr}")
+        remaining_result = run_git('diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
+        if remaining_result.output.empty?
+          commit_result = run_git('commit', '--no-edit', chdir: worktree.path)
+          unless commit_result.success?
+            @logger.error("Commit after conflict resolution failed: #{commit_result.error}")
             return false
           end
           @logger.info('Merge conflicts resolved by agent')
@@ -171,7 +174,7 @@ module Ocak
       end
 
       @logger.error('Agent could not resolve merge conflicts')
-      git('merge', '--abort', chdir: worktree.path)
+      run_git('merge', '--abort', chdir: worktree.path)
       false
     end
 
@@ -193,18 +196,14 @@ module Ocak
     end
 
     def push_branch(worktree)
-      _, stderr, status = git('push', '-u', 'origin', worktree.branch, chdir: worktree.path)
+      result = run_git('push', '-u', 'origin', worktree.branch, chdir: worktree.path)
 
-      unless status.success?
-        @logger.error("Push failed: #{stderr}")
+      unless result.success?
+        @logger.error("Push failed: #{result.error}")
         return false
       end
 
       true
-    end
-
-    def git(*, chdir:)
-      Open3.capture3('git', *, chdir: chdir)
     end
 
     def shell(cmd, chdir:)

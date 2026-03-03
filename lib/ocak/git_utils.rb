@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
 require 'open3'
+require_relative 'command_runner'
 
 module Ocak
   module GitUtils
+    extend CommandRunner
+
     # Validates that a branch name is safe to pass to git commands.
     # Rejects names that could be interpreted as flags (starting with -)
     # or cause unexpected git behavior (containing ..).
@@ -17,22 +20,22 @@ module Ocak
     # Returns true if changes were committed, false if no changes or on failure.
     # Logs warnings via logger on failure rather than raising.
     def self.commit_changes(chdir:, message:, logger: nil)
-      stdout, _, status = Open3.capture3('git', 'status', '--porcelain', chdir: chdir)
-      unless status.success?
+      result = run_git('status', '--porcelain', chdir: chdir)
+      unless result.success?
         logger&.warn('git status --porcelain failed')
         return false
       end
-      return false if stdout.strip.empty?
+      return false if result.output.empty?
 
-      _, stderr, add_status = Open3.capture3('git', 'add', '-A', chdir: chdir)
-      unless add_status.success?
-        logger&.warn("git add failed: #{stderr[0..200]}")
+      add_result = run_git('add', '-A', chdir: chdir)
+      unless add_result.success?
+        logger&.warn("git add failed: #{add_result.error}")
         return false
       end
 
-      _, stderr, commit_status = Open3.capture3('git', 'commit', '-m', message, chdir: chdir)
-      unless commit_status.success?
-        logger&.warn("git commit failed: #{stderr[0..200]}")
+      commit_result = run_git('commit', '-m', message, chdir: chdir)
+      unless commit_result.success?
+        logger&.warn("git commit failed: #{commit_result.error}")
         return false
       end
 
@@ -42,8 +45,12 @@ module Ocak
     # Checks out the main branch. Intended for cleanup/ensure blocks.
     # Rescues all errors so it never crashes the caller.
     def self.checkout_main(chdir:, logger: nil)
-      _, stderr, status = Open3.capture3('git', 'checkout', 'main', chdir: chdir)
-      logger&.warn("Cleanup checkout to main failed: #{stderr}") unless status.success?
+      result = run_git('checkout', 'main', chdir: chdir)
+      unless result.success?
+        # Use "error" prefix when command not found (status is nil), otherwise "failed"
+        prefix = result.status.nil? ? 'Cleanup checkout to main error:' : 'Cleanup checkout to main failed:'
+        logger&.warn("#{prefix} #{result.error}")
+      end
     rescue StandardError => e
       logger&.warn("Cleanup checkout to main error: #{e.message}")
     end
