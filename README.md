@@ -173,6 +173,19 @@ When `--manual-review` is enabled, PRs sit open for human review. After leaving 
 4. Remove the `auto-reready` label
 5. Comment "Feedback addressed. Please re-review."
 
+### Local Issues (Offline Mode)
+
+Ocak can run without GitHub. Set `issues.backend: local` in `ocak.yml` (or just create `.ocak/issues/` and it auto-detects). Issues are stored as numbered markdown files with YAML frontmatter.
+
+```bash
+ocak issue create "Add retry logic to API client" --label auto-ready
+ocak issue list
+ocak issue view 1
+ocak run 1 --watch
+```
+
+Issues live in `.ocak/issues/0001.md`, `.ocak/issues/0002.md`, etc. Labels, complexity, and pipeline comments are all tracked in the file. Merging goes straight to main (no PRs) via `LocalMergeManager`.
+
 ### Graceful Shutdown
 
 `Ctrl+C` once — current agent step finishes, then the pipeline stops. WIP gets committed, labels reset to `auto-ready`, and resume commands are printed.
@@ -198,6 +211,10 @@ stack:
   security_commands:
     - "bundle exec brakeman -q"
     - "bundle exec bundler-audit check"
+
+# Issue backend (omit for GitHub, or set to "local" for offline mode)
+issues:
+  backend: github          # or "local" — auto-detected if .ocak/issues/ exists
 
 # Pipeline settings
 pipeline:
@@ -397,6 +414,16 @@ ocak clean                           Remove stale worktrees
      --logs                         Clean log files, state, and reports
      --all                          Clean worktrees and logs
      --keep N                       Only remove artifacts older than N days
+
+ocak issue create TITLE [options]    Create a local issue
+     --body TEXT                     Issue body (opens $EDITOR if omitted)
+     --label LABEL                  Add label (repeatable)
+     --complexity full|simple       Set complexity (default: full)
+
+ocak issue list [--label LABEL]      List local issues
+ocak issue view ISSUE                View a local issue
+ocak issue edit ISSUE                Open issue in $EDITOR
+ocak issue close ISSUE               Mark issue as completed
 
 ocak design [DESCRIPTION]            Launch interactive issue design session
 ocak audit [SCOPE]                   Print instructions for /audit skill
