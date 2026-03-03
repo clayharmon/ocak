@@ -3,9 +3,12 @@
 require 'open3'
 require 'shellwords'
 require_relative 'git_utils'
+require_relative 'command_runner'
 
 module Ocak
   class RereadyProcessor
+    include CommandRunner
+
     def initialize(config:, logger:, claude:, issues:, watch: nil)
       @config = config
       @logger = logger
@@ -61,17 +64,14 @@ module Ocak
     end
 
     def checkout_pr_branch(branch_name)
-      _, _, fetch_status = Open3.capture3('git', 'fetch', 'origin', branch_name,
-                                          chdir: @config.project_dir)
-      return false unless fetch_status.success?
+      fetch_result = run_git('fetch', 'origin', branch_name, chdir: @config.project_dir)
+      return false unless fetch_result.success?
 
-      _, _, checkout_status = Open3.capture3('git', 'checkout', branch_name,
-                                             chdir: @config.project_dir)
-      return false unless checkout_status.success?
+      checkout_result = run_git('checkout', branch_name, chdir: @config.project_dir)
+      return false unless checkout_result.success?
 
-      _, _, pull_status = Open3.capture3('git', 'pull', '--rebase', 'origin', branch_name,
-                                         chdir: @config.project_dir)
-      pull_status.success?
+      pull_result = run_git('pull', '--rebase', 'origin', branch_name, chdir: @config.project_dir)
+      pull_result.success?
     end
 
     def run_feedback_loop(feedback)
@@ -131,8 +131,8 @@ module Ocak
       )
       @logger.warn('Proceeding to push without new commit') unless committed
 
-      _, _, push_status = Open3.capture3('git', 'push', '--force-with-lease', chdir: @config.project_dir)
-      push_status.success?
+      push_result = run_git('push', '--force-with-lease', chdir: @config.project_dir)
+      push_result.success?
     end
 
     def cleanup
