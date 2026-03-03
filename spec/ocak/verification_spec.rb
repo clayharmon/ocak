@@ -81,6 +81,17 @@ RSpec.describe Ocak::Verification do
   end
 
   describe '#run_scoped_lint' do
+    it 'returns nil and logs warning when git diff fails' do
+      allow(Open3).to receive(:capture3)
+        .with('git', 'diff', '--name-only', 'main', chdir: chdir)
+        .and_return(['', 'fatal: ambiguous argument', instance_double(Process::Status, success?: false)])
+
+      result = host.run_scoped_lint(logger, chdir: chdir)
+
+      expect(result).to be_nil
+      expect(logger).to have_received(:warn).with(/Scoped lint skipped — git diff failed/)
+    end
+
     it 'returns nil when no changed files match lint extensions' do
       allow(Open3).to receive(:capture3)
         .with('git', 'diff', '--name-only', 'main', chdir: chdir)
