@@ -50,6 +50,9 @@ module Ocak
       path = File.join(dir, "issue-#{issue_number}-#{timestamp}.json")
       File.write(path, JSON.pretty_generate(to_h(issue_number)))
       path
+    rescue SystemCallError => e
+      warn("Failed to save report to #{path}: #{e.message}")
+      nil
     end
 
     def to_h(issue_number)
@@ -75,8 +78,8 @@ module Ocak
 
       Dir.glob(File.join(dir, 'issue-*.json')).filter_map do |path|
         JSON.parse(File.read(path), symbolize_names: true)
-      rescue JSON::ParserError => e
-        warn("Skipping malformed report #{File.basename(path)}: #{e.message}")
+      rescue JSON::ParserError, SystemCallError => e
+        warn("Skipping report #{File.basename(path)}: #{e.message}")
         nil
       end
     end
