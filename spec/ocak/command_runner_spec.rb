@@ -51,8 +51,8 @@ RSpec.describe Ocak::CommandRunner do
       it 'truncates stderr to 500 characters' do
         long_error = 'x' * 1000
         result = described_class.new('', long_error, failure_status)
-        expect(result.error).to eq('x' * 501)
-        expect(result.error.length).to eq(501)
+        expect(result.error).to eq('x' * 500)
+        expect(result.error.length).to eq(500)
       end
 
       it 'returns full stderr when under 500 characters' do

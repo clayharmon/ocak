@@ -14,7 +14,7 @@ module Ocak
       end
 
       def error
-        stderr[0..500]
+        stderr[0...500]
       end
     end
 
@@ -31,9 +31,9 @@ module Ocak
     def run_command(*, chdir: nil)
       opts = chdir ? { chdir: chdir } : {}
       stdout, stderr, status = Open3.capture3(*, **opts)
-      CommandResult.new(stdout: stdout, stderr: stderr, status: status)
+      CommandResult.new(stdout, stderr, status)
     rescue Errno::ENOENT => e
-      CommandResult.new(stdout: '', stderr: e.message, status: nil)
+      CommandResult.new('', e.message, nil)
     end
   end
 end

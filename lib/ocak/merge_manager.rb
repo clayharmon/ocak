@@ -125,7 +125,7 @@ module Ocak
 
       return true if rebase_result.success?
 
-      @logger.warn("Rebase conflict, aborting rebase: #{rebase_result.stderr}")
+      @logger.warn("Rebase conflict, aborting rebase: #{rebase_result.error}")
       abort_result = run_git('rebase', '--abort', chdir: worktree.path)
       @logger.warn("git rebase --abort failed: #{abort_result.error}") unless abort_result.success?
 
@@ -136,7 +136,7 @@ module Ocak
       return true if merge_result.success?
 
       # Merge also has conflicts — try to resolve via agent
-      @logger.warn("Merge conflict, attempting agent resolution: #{merge_result.stderr}")
+      @logger.warn("Merge conflict, attempting agent resolution: #{merge_result.error}")
       resolve_conflicts_via_agent(worktree)
     end
 

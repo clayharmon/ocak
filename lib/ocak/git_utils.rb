@@ -5,9 +5,8 @@ require_relative 'command_runner'
 
 module Ocak
   module GitUtils
-    class << self
-      include CommandRunner
-    end
+    extend CommandRunner
+
     # Validates that a branch name is safe to pass to git commands.
     # Rejects names that could be interpreted as flags (starting with -)
     # or cause unexpected git behavior (containing ..).
@@ -50,7 +49,7 @@ module Ocak
       unless result.success?
         # Use "error" prefix when command not found (status is nil), otherwise "failed"
         prefix = result.status.nil? ? 'Cleanup checkout to main error:' : 'Cleanup checkout to main failed:'
-        logger&.warn("#{prefix} #{result.stderr}")
+        logger&.warn("#{prefix} #{result.error}")
       end
     rescue StandardError => e
       logger&.warn("Cleanup checkout to main error: #{e.message}")
