@@ -9,7 +9,8 @@ module Ocak
       sanitized = result[:output][0..1000].to_s.gsub('```', "'''")
       issues.comment(issue_number,
                      "Pipeline failed at phase: #{result[:phase]}\n\n```\n#{sanitized}\n```")
-    rescue StandardError
+    rescue StandardError => e
+      @logger&.debug("Failure report failed: #{e.message}")
       nil
     end
   end

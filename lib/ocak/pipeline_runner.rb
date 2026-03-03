@@ -288,7 +288,8 @@ module Ocak
       issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
       begin
         issues.comment(issue_number, "Unexpected #{error.class}: #{error.message}")
-      rescue StandardError
+      rescue StandardError => e
+        logger&.debug("Comment posting failed: #{e.message}")
         nil
       end
     end
