@@ -129,6 +129,71 @@ RSpec.describe Ocak::PipelineExecutor do
       expect(claude).to have_received(:run_agent)
         .with('implementer', anything, chdir: '/project')
     end
+
+    context 'with skip_merge: true' do
+      let(:config) do
+        instance_double(Ocak::Config,
+                        project_dir: '/project',
+                        log_dir: 'logs/pipeline',
+                        cost_budget: nil,
+                        test_command: nil,
+                        lint_check_command: nil,
+                        manual_review: false,
+                        audit_mode: false,
+                        language: 'ruby',
+                        steps: [
+                          { 'agent' => 'implementer', 'role' => 'implement' },
+                          { 'agent' => 'reviewer', 'role' => 'review' },
+                          { 'agent' => 'merger', 'role' => 'merge' }
+                        ])
+      end
+
+      it 'skips the merge step' do
+        allow(claude).to receive(:run_agent).and_return(success_result)
+
+        result = executor.run_pipeline(42, logger: logger, claude: claude, skip_merge: true)
+
+        expect(result[:success]).to be true
+        expect(claude).to have_received(:run_agent).with('implementer', anything, chdir: '/project')
+        expect(claude).to have_received(:run_agent).with('reviewer', anything, chdir: '/project')
+        expect(claude).not_to have_received(:run_agent).with('merger', anything, chdir: anything)
+      end
+
+      it 'logs the skip reason' do
+        allow(claude).to receive(:run_agent).and_return(success_result)
+
+        executor.run_pipeline(42, logger: logger, claude: claude, skip_merge: true)
+
+        expect(logger).to have_received(:info).with(/Skipping merge.*MergeManager/)
+      end
+    end
+
+    context 'with skip_merge: false (default)' do
+      let(:config) do
+        instance_double(Ocak::Config,
+                        project_dir: '/project',
+                        log_dir: 'logs/pipeline',
+                        cost_budget: nil,
+                        test_command: nil,
+                        lint_check_command: nil,
+                        manual_review: false,
+                        audit_mode: false,
+                        language: 'ruby',
+                        steps: [
+                          { 'agent' => 'implementer', 'role' => 'implement' },
+                          { 'agent' => 'merger', 'role' => 'merge' }
+                        ])
+      end
+
+      it 'runs the merge step' do
+        allow(claude).to receive(:run_agent).and_return(success_result)
+
+        result = executor.run_pipeline(42, logger: logger, claude: claude)
+
+        expect(result[:success]).to be true
+        expect(claude).to have_received(:run_agent).with('merger', anything, chdir: '/project')
+      end
+    end
   end
 
   describe 'step conditions' do
