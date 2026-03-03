@@ -211,12 +211,12 @@ RSpec.describe Ocak::Verification do
       allow(claude).to receive(:run_agent)
 
       host.run_verification_with_retry(logger: logger, claude: claude, chdir: chdir,
-                                       model: 'us.anthropic.claude-sonnet-4-6-v1') do |body|
+                                       model: 'sonnet') do |body|
         body
       end
 
       expect(claude).to have_received(:run_agent)
-        .with('implementer', anything, chdir: chdir, model: 'us.anthropic.claude-sonnet-4-6-v1')
+        .with('implementer', anything, chdir: chdir, model: 'sonnet')
     end
 
     it 'does not pass model when nil' do

@@ -82,7 +82,7 @@ RSpec.describe Ocak::ClaudeRunner do
                                     total_cost_usd: 0.001, duration_ms: 1000, num_turns: 1)
 
         allow(Ocak::ProcessRunner).to receive(:run) do |cmd, **opts|
-          expect(cmd).to include('--model', 'us.anthropic.claude-sonnet-4-6-v1')
+          expect(cmd).to include('--model', 'opus')
           opts[:on_line]&.call(result_json)
           [result_json, '', instance_double(Process::Status, success?: true)]
         end
@@ -90,16 +90,16 @@ RSpec.describe Ocak::ClaudeRunner do
         runner.run_agent('reviewer', 'Review code')
       end
 
-      it 'passes --model opus for implementer' do
-        allow(config).to receive(:agent_path).with('implementer')
+      it 'passes --model opus for pipeline' do
+        allow(config).to receive(:agent_path).with('pipeline')
                                              .and_return(File.join(dir, '.claude', 'agents', 'reviewer.md'))
 
         allow(Ocak::ProcessRunner).to receive(:run) do |cmd, **_opts|
-          expect(cmd).to include('--model', 'us.anthropic.claude-opus-4-6-v1')
+          expect(cmd).to include('--model', 'opus')
           ['', '', instance_double(Process::Status, success?: false)]
         end
 
-        runner.run_agent('implementer', 'Implement code')
+        runner.run_agent('pipeline', 'Run pipeline')
       end
 
       it 'allows model override via parameter' do
@@ -107,12 +107,12 @@ RSpec.describe Ocak::ClaudeRunner do
                                     total_cost_usd: 0.01, duration_ms: 1000, num_turns: 1)
 
         allow(Ocak::ProcessRunner).to receive(:run) do |cmd, **opts|
-          expect(cmd).to include('--model', 'us.anthropic.claude-opus-4-6-v1')
+          expect(cmd).to include('--model', 'custom-model-id')
           opts[:on_line]&.call(result_json)
           [result_json, '', instance_double(Process::Status, success?: true)]
         end
 
-        runner.run_agent('reviewer', 'Review code', model: 'us.anthropic.claude-opus-4-6-v1')
+        runner.run_agent('reviewer', 'Review code', model: 'custom-model-id')
       end
 
       it 'reports failure when process exits non-zero' do
