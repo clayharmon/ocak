@@ -86,7 +86,7 @@ module Ocak
       elsif result[:success]
         handle_single_success(issue_number, result, logger: logger, claude: claude, issues: issues)
       else
-        report_pipeline_failure(issue_number, result, issues: issues, config: @config)
+        report_pipeline_failure(issue_number, result, issues: issues, config: @config, logger: logger)
         logger.error("Issue ##{issue_number} failed at phase: #{result[:phase]}")
       end
     end
@@ -212,7 +212,7 @@ module Ocak
         { issue_number: issue_number, success: true, worktree: worktree,
           audit_blocked: result[:audit_blocked], audit_output: result[:audit_output] }
       else
-        report_pipeline_failure(issue_number, result, issues: issues, config: @config)
+        report_pipeline_failure(issue_number, result, issues: issues, config: @config, logger: logger)
         { issue_number: issue_number, success: false, worktree: worktree }
       end
     end

@@ -1107,6 +1107,17 @@ RSpec.describe Ocak::PipelineRunner do
       expect { runner.run }.not_to raise_error
       expect(issues).to have_received(:transition).with(1, from: 'in-progress', to: 'pipeline-failed')
     end
+
+    it 'logs debug message when issues.comment raises during handle_process_error' do
+      logger_double = instance_double(Ocak::PipelineLogger, info: nil, error: nil, debug: nil)
+      allow(Ocak::PipelineLogger).to receive(:new).and_return(logger_double)
+      allow(claude).to receive(:run_agent).and_raise(RuntimeError, 'original error')
+      allow(issues).to receive(:comment).and_raise(StandardError, 'GitHub API down')
+
+      runner.run
+
+      expect(logger_double).to have_received(:debug).with('Comment posting failed: GitHub API down')
+    end
   end
 
   describe 'multi-issue batch with programming error' do

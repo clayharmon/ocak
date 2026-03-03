@@ -96,7 +96,8 @@ module Ocak
         if result[:success]
           attempt_merge(ctx)
         else
-          report_pipeline_failure(ctx[:issue_number], result, issues: ctx[:issues], config: ctx[:config])
+          report_pipeline_failure(ctx[:issue_number], result, issues: ctx[:issues], config: ctx[:config],
+                                                              logger: ctx[:logger])
           warn "Issue ##{ctx[:issue_number]} failed again at phase: #{result[:phase]}"
         end
       end
