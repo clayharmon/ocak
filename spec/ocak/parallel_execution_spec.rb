@@ -97,42 +97,94 @@ RSpec.describe Ocak::ParallelExecution do
     let(:step_b) { { agent: 'security-reviewer', role: 'security', parallel: true } }
     let(:group) { [[step_a, 0], [step_b, 1]] }
 
-    it 'runs all steps and returns nil when all succeed' do
-      instance.run_single_step_impl = ->(*_args, **_kwargs) {}
-      result = instance.run_parallel_group(group, 42, base_state, logger: logger, claude: claude,
-                                                                  chdir: '/project')
-      expect(result).to be_nil
-    end
-
-    it 'returns first failure result' do
-      failure_hash = { success: false, phase: 'security', output: 'Error' }
-      instance.run_single_step_impl = lambda do |step, *_args, **_kwargs|
-        step[:role] == 'security' ? failure_hash : nil
+    context 'when all threads succeed' do
+      it 'runs all steps and returns nil when all succeed' do
+        instance.run_single_step_impl = ->(*_args, **_kwargs) {}
+        result = instance.run_parallel_group(group, 42, base_state, logger: logger, claude: claude,
+                                                                    chdir: '/project')
+        expect(result).to be_nil
       end
 
-      result = instance.run_parallel_group(group, 42, base_state, logger: logger, claude: claude,
-                                                                  chdir: '/project')
-      expect(result).to eq(failure_hash)
+      it 'runs steps in parallel (both steps called)' do
+        called_roles = []
+        mutex = Mutex.new
+        instance.run_single_step_impl = lambda do |step, *_args, **_kwargs|
+          mutex.synchronize { called_roles << step[:role] }
+          nil
+        end
+
+        instance.run_parallel_group(group, 42, base_state, logger: logger, claude: claude, chdir: '/project')
+        expect(called_roles).to contain_exactly('review', 'security')
+      end
     end
 
-    it 'runs steps in parallel (both steps called)' do
-      called_roles = []
-      mutex = Mutex.new
-      instance.run_single_step_impl = lambda do |step, *_args, **_kwargs|
-        mutex.synchronize { called_roles << step[:role] }
-        nil
+    context 'when a step returns a failure result' do
+      it 'returns first failure result' do
+        failure_hash = { success: false, phase: 'security', output: 'Error' }
+        instance.run_single_step_impl = lambda do |step, *_args, **_kwargs|
+          step[:role] == 'security' ? failure_hash : nil
+        end
+
+        result = instance.run_parallel_group(group, 42, base_state, logger: logger, claude: claude,
+                                                                    chdir: '/project')
+        expect(result).to eq(failure_hash)
+      end
+    end
+
+    context 'when a thread raises StandardError' do
+      it 'returns a failure hash instead of nil' do
+        instance.run_single_step_impl = ->(*_args, **_kwargs) { raise 'something went wrong' }
+
+        result = instance.run_parallel_group([[step_a, 0]], 42, base_state, logger: logger, claude: claude,
+                                                                            chdir: '/project')
+
+        expect(result).to be_a(Hash)
+        expect(result[:success]).to be false
       end
 
-      instance.run_parallel_group(group, 42, base_state, logger: logger, claude: claude, chdir: '/project')
-      expect(called_roles).to contain_exactly('review', 'security')
+      it 'includes the phase (step role) in the failure hash' do
+        instance.run_single_step_impl = ->(*_args, **_kwargs) { raise 'boom' }
+
+        result = instance.run_parallel_group([[step_a, 0]], 42, base_state, logger: logger, claude: claude,
+                                                                            chdir: '/project')
+
+        expect(result[:phase]).to eq('review')
+      end
+
+      it 'includes the error message in the output field' do
+        instance.run_single_step_impl = ->(*_args, **_kwargs) { raise 'connection refused' }
+
+        result = instance.run_parallel_group([[step_a, 0]], 42, base_state, logger: logger, claude: claude,
+                                                                            chdir: '/project')
+
+        expect(result[:output]).to eq('Thread error: connection refused')
+      end
+
+      it 'logs the error to the logger' do
+        instance.run_single_step_impl = ->(*_args, **_kwargs) { raise 'timeout' }
+
+        instance.run_parallel_group([[step_a, 0]], 42, base_state, logger: logger, claude: claude,
+                                                                   chdir: '/project')
+
+        expect(logger).to have_received(:error).with(/review thread failed: timeout/)
+      end
     end
 
-    it 'logs error when a thread raises StandardError' do
-      instance.run_single_step_impl = ->(*_args, **_kwargs) { raise StandardError, 'thread error' }
-      result = instance.run_parallel_group([[step_a, 0]], 42, base_state, logger: logger, claude: claude,
-                                                                          chdir: '/project')
-      expect(logger).to have_received(:error).with(/thread failed: thread error/)
-      expect(result).to be_nil
+    context 'when one thread fails and another succeeds' do
+      it 'returns the failure hash' do
+        instance.run_single_step_impl = lambda do |step, *_args, **_kwargs|
+          raise 'failed' if step[:role] == 'security'
+
+          nil
+        end
+
+        result = instance.run_parallel_group(group, 42, base_state, logger: logger, claude: claude,
+                                                                    chdir: '/project')
+
+        expect(result).to be_a(Hash)
+        expect(result[:success]).to be false
+        expect(result[:phase]).to eq('security')
+      end
     end
 
     it 'passes a shared mutex to run_single_step' do

@@ -1228,7 +1228,7 @@ RSpec.describe Ocak::PipelineExecutor do
       expect(claude).to have_received(:run_agent).with('security-reviewer', anything, chdir: anything)
     end
 
-    it 'catches thread exceptions and continues' do
+    it 'returns failure when a thread raises an exception' do
       allow(claude).to receive(:run_agent).and_return(success_result)
       allow(claude).to receive(:run_agent)
         .with('reviewer', anything, chdir: anything)
@@ -1236,7 +1236,8 @@ RSpec.describe Ocak::PipelineExecutor do
 
       result = executor.run_pipeline(42, logger: logger, claude: claude, steps: parallel_steps)
 
-      expect(result[:success]).to be true
+      expect(result[:success]).to be false
+      expect(result[:phase]).to eq('review')
       expect(logger).to have_received(:error).with(/review thread failed: connection reset/)
     end
 
