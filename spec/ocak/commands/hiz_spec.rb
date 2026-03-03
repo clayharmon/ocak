@@ -149,6 +149,20 @@ RSpec.describe Ocak::Commands::Hiz do
       expect(Open3).to have_received(:capture3)
         .with('git', 'branch', '-D', match(%r{\Ahiz/issue-42-}), chdir: '/project')
     end
+
+    it 'logs debug message when failure comment posting fails' do
+      allow(issues).to receive(:comment).with(42, match(/failed at phase/)).and_raise(StandardError, 'API timeout')
+
+      command.call(issue: '42')
+
+      expect(logger).to have_received(:debug).with('Failure comment failed: API timeout')
+    end
+
+    it 'does not crash when failure comment posting fails' do
+      allow(issues).to receive(:comment).with(42, match(/failed at phase/)).and_raise(StandardError, 'API timeout')
+
+      expect { command.call(issue: '42') }.not_to raise_error
+    end
   end
 
   context 'when branch deletion fails after pipeline failure' do

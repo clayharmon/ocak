@@ -190,7 +190,8 @@ module Ocak
           sanitized = output.to_s[0..1000].gsub('```', "'''")
           issues.comment(issue_number,
                          "Hiz (fast mode) failed at phase: #{phase}\n\n```\n#{sanitized}\n```")
-        rescue StandardError
+        rescue StandardError => e
+          logger&.debug("Failure comment failed: #{e.message}")
           nil
         end
         warn "Issue ##{issue_number} failed at phase: #{phase}"

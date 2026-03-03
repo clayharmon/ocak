@@ -4,12 +4,13 @@ module Ocak
   # Shared pipeline failure reporting — label transition + comment posting.
   # Included by PipelineRunner and Commands::Resume.
   module FailureReporting
-    def report_pipeline_failure(issue_number, result, issues:, config:)
+    def report_pipeline_failure(issue_number, result, issues:, config:, logger: nil)
       issues.transition(issue_number, from: config.label_in_progress, to: config.label_failed)
       sanitized = result[:output][0..1000].to_s.gsub('```', "'''")
       issues.comment(issue_number,
                      "Pipeline failed at phase: #{result[:phase]}\n\n```\n#{sanitized}\n```")
-    rescue StandardError
+    rescue StandardError => e
+      logger&.debug("Failure report failed: #{e.message}")
       nil
     end
   end

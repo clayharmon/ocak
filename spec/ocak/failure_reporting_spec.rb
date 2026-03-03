@@ -64,4 +64,23 @@ RSpec.describe Ocak::FailureReporting do
 
     expect { includer.report_pipeline_failure(42, result, issues: issues, config: config) }.not_to raise_error
   end
+
+  it 'logs debug message when comment fails' do
+    logger = instance_double(Ocak::PipelineLogger, debug: nil)
+    allow(issues).to receive(:comment).and_raise(StandardError, 'GitHub API down')
+    result = { phase: 'implement', output: 'error' }
+
+    includer.report_pipeline_failure(42, result, issues: issues, config: config, logger: logger)
+
+    expect(logger).to have_received(:debug).with('Failure report failed: GitHub API down')
+  end
+
+  it 'does not crash when logger is nil and comment fails' do
+    allow(issues).to receive(:comment).and_raise(StandardError, 'GitHub API down')
+    result = { phase: 'implement', output: 'error' }
+
+    expect do
+      includer.report_pipeline_failure(42, result, issues: issues, config: config, logger: nil)
+    end.not_to raise_error
+  end
 end
