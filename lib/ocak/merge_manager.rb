@@ -73,12 +73,15 @@ module Ocak
     private
 
     def merger_prompt(issue_number, worktree)
-      if worktree.target_repo
-        "Create a PR and merge it for issue ##{issue_number}. Branch: #{worktree.branch}. " \
-          'Do NOT close any issues (the issue lives in a different repository).'
-      else
-        "Create a PR, merge it, and close issue ##{issue_number}. Branch: #{worktree.branch}"
-      end
+      base = if worktree.target_repo
+               "Create a PR and merge it for issue ##{issue_number}. Branch: #{worktree.branch}. " \
+                 'Do NOT close any issues (the issue lives in a different repository).'
+             else
+               "Create a PR, merge it, and close issue ##{issue_number}. Branch: #{worktree.branch}"
+             end
+      issue_data = @issues.view(issue_number)
+      base += "\n\n<issue_data>\nTitle: #{issue_data['title']}\n\n#{issue_data['body']}\n</issue_data>" if issue_data
+      base
     end
 
     def log_and_nil(message)

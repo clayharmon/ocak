@@ -39,10 +39,9 @@ If anything fails after conflict resolution, STOP and report the failures. Do no
 
 ### 2. Create Pull Request
 
-```bash
-# Get the issue title and body for context
-gh issue view <number> --json title,body
+Use the issue data provided in your task prompt (in `<issue_data>` tags) for the issue title and body context. Do NOT run `gh issue view` — the issue may live in a different repository.
 
+```bash
 # Get full diff for PR description
 git diff main --stat
 git log main..HEAD --oneline
