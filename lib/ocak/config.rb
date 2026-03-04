@@ -72,6 +72,33 @@ module Ocak
     def require_comment    = dig(:safety, :require_comment)
     def max_issues_per_run = dig(:safety, :max_issues_per_run) || 5
 
+    # Multi-repo
+    def repos
+      @data[:repos]
+    end
+
+    def multi_repo?
+      r = repos
+      r.is_a?(Hash) && !r.empty?
+    end
+
+    def target_field
+      dig(:target_field) || 'target_repo'
+    end
+
+    def resolve_repo(name)
+      raise ConfigError, 'No repos configured in ocak.yml' unless multi_repo?
+
+      key = name.to_sym
+      path_value = repos[key]
+      raise ConfigError, "Unknown repo '#{name}'. Known repos: #{repos.keys.join(', ')}" unless path_value
+
+      expanded = File.expand_path(path_value.to_s)
+      raise ConfigError, "Repo path does not exist: #{expanded}" unless Dir.exist?(expanded)
+
+      { name: name.to_s, path: expanded }
+    end
+
     # Issues
     def issue_backend = dig(:issues, :backend)
     def local_issues? = issue_backend == 'local'
