@@ -13,10 +13,11 @@ RSpec.describe Ocak::BatchProcessing do
 
       attr_accessor :shutting_down
 
-      def initialize(config:, options: {}, executor: nil)
+      def initialize(config:, options: {}, executor: nil, state_machine: nil)
         @config = config
         @options = options
         @executor = executor
+        @state_machine = state_machine
         @shutting_down = false
         @active_mutex = Mutex.new
         @active_issues = []
@@ -52,7 +53,9 @@ RSpec.describe Ocak::BatchProcessing do
   end
   let(:worktrees) { instance_double(Ocak::WorktreeManager, create: worktree, remove: nil) }
 
-  subject(:instance) { test_class.new(config: config, executor: executor) }
+  let(:state_machine) { Ocak::IssueStateMachine.new(config: config, issues: issues) }
+
+  subject(:instance) { test_class.new(config: config, executor: executor, state_machine: state_machine) }
 
   let(:ready_issue) { { 'number' => 42, 'title' => 'Fix bug' } }
 
@@ -275,7 +278,8 @@ RSpec.describe Ocak::BatchProcessing do
     end
 
     it 'uses simple complexity when fast option is set' do
-      host = test_class.new(config: config, options: { fast: true }, executor: executor)
+      host = test_class.new(config: config, options: { fast: true }, executor: executor,
+                            state_machine: state_machine)
       allow(host).to receive(:build_logger).and_return(logger)
       allow(host).to receive(:build_claude).and_return(claude)
       allow(host).to receive(:run_pipeline).and_return(success_pipeline_result)

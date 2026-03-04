@@ -4,6 +4,7 @@ require 'fileutils'
 require_relative 'batch_processing'
 require_relative 'failure_reporting'
 require_relative 'instance_builders'
+require_relative 'issue_state_machine'
 require_relative 'merge_orchestration'
 require_relative 'pipeline_executor'
 require_relative 'process_registry'
@@ -72,6 +73,7 @@ module Ocak
       issues = IssueBackend.build(config: @config)
       ensure_labels(issues, logger)
       @executor.issues = issues
+      @state_machine = build_state_machine(issues)
       logger.info("Running single issue mode for ##{issue_number}")
 
       if @options[:dry_run]
@@ -79,7 +81,7 @@ module Ocak
         return
       end
 
-      issues.transition(issue_number, from: @config.label_ready, to: @config.label_in_progress)
+      @state_machine.mark_in_progress(issue_number)
       complexity = @options[:fast] ? 'simple' : 'full'
       result = run_pipeline(issue_number, logger: logger, claude: claude, complexity: complexity)
 
@@ -98,6 +100,7 @@ module Ocak
       issues = IssueBackend.build(config: @config, logger: logger)
       ensure_labels(issues, logger)
       @executor.issues = issues
+      @state_machine = build_state_machine(issues)
       cleanup_stale_worktrees(logger)
 
       loop do

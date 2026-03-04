@@ -10,8 +10,9 @@ RSpec.describe Ocak::MergeOrchestration do
 
       attr_reader :config
 
-      def initialize(config:)
+      def initialize(config:, state_machine:)
         @config = config
+        @state_machine = state_machine
       end
 
       # Expose private methods for testing
@@ -40,7 +41,8 @@ RSpec.describe Ocak::MergeOrchestration do
     ]
   end
 
-  let(:host) { host_class.new(config: config) }
+  let(:state_machine) { Ocak::IssueStateMachine.new(config: config, issues: issues) }
+  let(:host) { host_class.new(config: config, state_machine: state_machine) }
   let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil) }
   let(:claude) { instance_double(Ocak::ClaudeRunner) }
   let(:issues) { instance_double(Ocak::IssueFetcher) }

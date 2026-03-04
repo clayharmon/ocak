@@ -8,7 +8,7 @@ RSpec.describe Ocak::InstanceBuilders do
     Class.new do
       include Ocak::InstanceBuilders
 
-      public :build_logger, :build_claude, :build_merge_manager,
+      public :build_logger, :build_claude, :build_merge_manager, :build_state_machine,
              :gh_available?, :cleanup_stale_worktrees, :ensure_labels
 
       def initialize(config:, options: {}, watch_formatter: nil, registry: nil)
@@ -93,6 +93,13 @@ RSpec.describe Ocak::InstanceBuilders do
       host.build_claude(logger)
       expect(Ocak::ClaudeRunner).to have_received(:new)
         .with(hash_including(watch: watch))
+    end
+  end
+
+  describe '#build_state_machine' do
+    it 'returns an IssueStateMachine instance' do
+      result = instance.build_state_machine(issues)
+      expect(result).to be_a(Ocak::IssueStateMachine)
     end
   end
 

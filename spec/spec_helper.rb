@@ -2,6 +2,7 @@
 
 require 'ocak'
 require 'ocak/config'
+require 'ocak/issue_state_machine'
 require 'ocak/stack_detector'
 require 'ocak/worktree_manager'
 require 'ocak/issue_fetcher'

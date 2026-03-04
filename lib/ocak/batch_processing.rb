@@ -70,7 +70,7 @@ module Ocak
       @active_mutex.synchronize do
         @active_issues << issue_number
       end
-      issues.transition(issue_number, from: @config.label_ready, to: @config.label_in_progress)
+      @state_machine.mark_in_progress(issue_number)
 
       target = issue['_target']
       worktree_mgr = if target

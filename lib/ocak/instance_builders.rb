@@ -17,6 +17,10 @@ module Ocak
       ClaudeRunner.new(config: @config, logger: logger, watch: @watch_formatter, registry: @registry)
     end
 
+    def build_state_machine(issues)
+      IssueStateMachine.new(config: @config, issues: issues)
+    end
+
     def build_merge_manager(logger:, issues:)
       if issues.is_a?(LocalIssueFetcher) && !gh_available?
         LocalMergeManager.new(config: @config, logger: logger, issues: issues)

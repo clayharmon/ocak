@@ -40,7 +40,7 @@ module Ocak
     def handle_process_error(error, issue_number:, logger:, issues:)
       logger.error("Unexpected #{error.class}: #{error.message}\n#{error.backtrace&.first(5)&.join("\n")}")
       logger.debug("Full backtrace:\n#{error.backtrace&.join("\n")}")
-      issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
+      @state_machine.mark_failed(issue_number)
       begin
         issues.comment(issue_number, "Unexpected #{error.class}: #{error.message}")
       rescue StandardError => e
@@ -55,7 +55,7 @@ module Ocak
                                 message: "wip: pipeline interrupted after step #{step_name} for issue ##{issue_number}",
                                 logger: logger)
       end
-      issues&.transition(issue_number, from: @config.label_in_progress, to: @config.label_ready)
+      @state_machine&.mark_interrupted(issue_number)
       issues&.comment(issue_number,
                       "\u{26A0}\u{FE0F} Pipeline interrupted after #{step_name}. " \
                       "Resume with `ocak resume --issue #{issue_number}`.")
