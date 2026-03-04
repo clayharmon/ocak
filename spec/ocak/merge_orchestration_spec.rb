@@ -165,6 +165,65 @@ RSpec.describe Ocak::MergeOrchestration do
         expect(claude).not_to have_received(:run_agent)
       end
     end
+
+    context 'when result includes target_repo' do
+      let(:target_repo) { { name: 'my-gem', path: '/dev/my-gem' } }
+
+      it 'runs merger agent with target repo chdir' do
+        allow(claude).to receive(:run_agent).and_return(success_result)
+
+        host.handle_single_success(42, { success: true, target_repo: target_repo },
+                                   logger: logger, claude: claude, issues: issues)
+
+        expect(claude).to have_received(:run_agent)
+          .with('merger', /Do NOT close any issues/, chdir: '/dev/my-gem')
+      end
+
+      it 'still transitions to completed' do
+        allow(claude).to receive(:run_agent).and_return(success_result)
+
+        host.handle_single_success(42, { success: true, target_repo: target_repo },
+                                   logger: logger, claude: claude, issues: issues)
+
+        expect(issues).to have_received(:transition).with(42, from: 'in-progress', to: 'completed')
+      end
+
+      it 'passes target chdir to manual review when manual_review enabled' do
+        allow(config).to receive(:manual_review).and_return(true)
+        allow(claude).to receive(:run_agent).and_return(success_result)
+
+        host.handle_single_success(42, { success: true, target_repo: target_repo },
+                                   logger: logger, claude: claude, issues: issues)
+
+        expect(claude).to have_received(:run_agent)
+          .with('merger', anything, chdir: '/dev/my-gem')
+      end
+
+      it 'passes target chdir through audit blocked handler' do
+        allow(claude).to receive(:run_agent).and_return(success_result)
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'view', '--json', 'number', chdir: '/dev/my-gem')
+          .and_return(['{"number":77}', '', instance_double(Process::Status, success?: true)])
+
+        host.handle_single_success(42, { success: true, audit_blocked: true, audit_output: 'findings',
+                                         target_repo: target_repo },
+                                   logger: logger, claude: claude, issues: issues)
+
+        expect(issues).to have_received(:pr_comment).with(77, /Audit Report/)
+      end
+    end
+
+    context 'when target_repo has no path (edge case)' do
+      it 'falls back to project_dir' do
+        allow(claude).to receive(:run_agent).and_return(success_result)
+
+        host.handle_single_success(42, { success: true, target_repo: {} },
+                                   logger: logger, claude: claude, issues: issues)
+
+        expect(claude).to have_received(:run_agent)
+          .with('merger', anything, chdir: '/project')
+      end
+    end
   end
 
   describe '#pipeline_has_merge_step?' do
@@ -186,6 +245,27 @@ RSpec.describe Ocak::MergeOrchestration do
       it 'returns true' do
         expect(host.pipeline_has_merge_step?).to be true
       end
+    end
+  end
+
+  describe '#handle_single_manual_review' do
+    it 'uses project_dir by default' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      host.handle_single_manual_review(42, logger: logger, claude: claude, issues: issues)
+
+      expect(claude).to have_received(:run_agent)
+        .with('merger', anything, chdir: '/project')
+    end
+
+    it 'uses explicit chdir param when provided' do
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      host.handle_single_manual_review(42, logger: logger, claude: claude, issues: issues,
+                                           chdir: '/custom/path')
+
+      expect(claude).to have_received(:run_agent)
+        .with('merger', anything, chdir: '/custom/path')
     end
   end
 
@@ -277,6 +357,14 @@ RSpec.describe Ocak::MergeOrchestration do
 
       expect(host.find_pr_for_branch(logger: logger)).to be_nil
       expect(logger).to have_received(:warn).with(/Failed to find PR number/)
+    end
+
+    it 'uses explicit chdir param when provided' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'pr', 'view', '--json', 'number', chdir: '/target/repo')
+        .and_return(['{"number":42}', '', instance_double(Process::Status, success?: true)])
+
+      expect(host.find_pr_for_branch(logger: logger, chdir: '/target/repo')).to eq(42)
     end
   end
 end
