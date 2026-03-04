@@ -274,5 +274,38 @@ RSpec.describe Ocak::ClaudeRunner do
       expect(result.success?).to be false
       expect(call_count).to eq(3) # initial + 2 retries
     end
+
+    it 'treats agent execution timeout as a transient failure and retries' do
+      call_count = 0
+      result_json = JSON.generate(type: 'result', subtype: 'success', result: 'OK',
+                                  total_cost_usd: 0.01, duration_ms: 1000, num_turns: 1)
+
+      allow(Ocak::ProcessRunner).to receive(:run) do |_cmd, **opts|
+        call_count += 1
+        if call_count == 1
+          ['', "Timed out after #{Ocak::ClaudeRunner::TIMEOUT}s",
+           Ocak::ProcessRunner::FailedStatus.instance]
+        else
+          opts[:on_line]&.call(result_json)
+          [result_json, '', instance_double(Process::Status, success?: true)]
+        end
+      end
+
+      stub_const('Ocak::ClaudeRunner::RETRY_DELAYS', [0, 0])
+      result = runner.run_agent('reviewer', 'Review code')
+      expect(result.success?).to be true
+      expect(call_count).to eq(2)
+    end
+
+    it 'returns failure when all retries are exhausted due to agent timeout' do
+      allow(Ocak::ProcessRunner).to receive(:run).and_return(
+        ['', "Timed out after #{Ocak::ClaudeRunner::TIMEOUT}s",
+         Ocak::ProcessRunner::FailedStatus.instance]
+      )
+
+      stub_const('Ocak::ClaudeRunner::RETRY_DELAYS', [0, 0])
+      result = runner.run_agent('reviewer', 'Review code')
+      expect(result.success?).to be false
+    end
   end
 end

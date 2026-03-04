@@ -2,6 +2,8 @@
 
 require 'spec_helper'
 require 'ocak/process_runner'
+require 'tmpdir'
+require 'fileutils'
 
 RSpec.describe Ocak::ProcessRunner do
   describe '.run' do
@@ -173,6 +175,36 @@ RSpec.describe Ocak::ProcessRunner do
     ensure
       stdout_r.close unless stdout_r.closed?
       stderr_r.close unless stderr_r.closed?
+    end
+
+    context 'when process exceeds timeout' do
+      let(:chdir) { Dir.mktmpdir }
+
+      after { FileUtils.remove_entry(chdir) }
+
+      before do
+        # Suppress the KILL_GRACE_PERIOD sleep so tests finish in ~1 second
+        allow(described_class).to receive(:sleep)
+      end
+
+      it 'reports timeout in stderr' do
+        _stdout, stderr, _status = described_class.run(%w[sleep 30], chdir: chdir, timeout: 1)
+
+        expect(stderr).to include('Timed out')
+      end
+
+      it 'returns non-success status after timeout-triggered kill' do
+        _stdout, _stderr, status = described_class.run(%w[sleep 30], chdir: chdir, timeout: 1)
+
+        expect(status.success?).not_to be true
+      end
+
+      it 'unregisters the PID from the process registry after timeout-triggered kill' do
+        registry = Ocak::ProcessRegistry.new
+        described_class.run(%w[sleep 30], chdir: chdir, timeout: 1, registry: registry)
+
+        expect(registry.pids).to be_empty
+      end
     end
   end
 
