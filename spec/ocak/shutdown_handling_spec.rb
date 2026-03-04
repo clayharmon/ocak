@@ -13,9 +13,10 @@ RSpec.describe Ocak::ShutdownHandling do
 
       attr_reader :shutting_down, :shutdown_count, :interrupted_issues
 
-      def initialize(config:, registry:)
+      def initialize(config:, registry:, state_machine: nil)
         @config = config
         @registry = registry
+        @state_machine = state_machine
         @shutting_down = false
         @shutdown_count = 0
         @active_mutex = Mutex.new
@@ -35,7 +36,9 @@ RSpec.describe Ocak::ShutdownHandling do
   let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, debug: nil) }
   let(:issues) { instance_double(Ocak::IssueFetcher, transition: nil, comment: nil) }
 
-  subject(:instance) { test_class.new(config: config, registry: registry) }
+  let(:state_machine) { Ocak::IssueStateMachine.new(config: config, issues: issues) }
+
+  subject(:instance) { test_class.new(config: config, registry: registry, state_machine: state_machine) }
 
   describe '#shutdown!' do
     it 'initiates graceful shutdown on first call' do

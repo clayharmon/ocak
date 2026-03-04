@@ -3,6 +3,7 @@
 require_relative '../config'
 require_relative '../failure_reporting'
 require_relative '../git_utils'
+require_relative '../issue_state_machine'
 require_relative '../pipeline_runner'
 require_relative '../pipeline_state'
 require_relative '../claude_runner'
@@ -79,8 +80,9 @@ module Ocak
         watch_formatter = options[:watch] ? WatchFormatter.new : nil
         claude = ClaudeRunner.new(config: config, logger: logger, watch: watch_formatter)
         issues = IssueBackend.build(config: config, logger: logger)
+        state_machine = IssueStateMachine.new(config: config, issues: issues)
 
-        issues.transition(issue_number, from: config.label_failed, to: config.label_in_progress)
+        state_machine.mark_resuming(issue_number)
 
         runner = PipelineRunner.new(config: config, options: { watch: options[:watch] })
         result = runner.run_pipeline(issue_number,
@@ -88,7 +90,8 @@ module Ocak
                                      skip_steps: saved[:completed_steps])
 
         ctx = { config: config, issue_number: issue_number, saved: saved, chdir: chdir,
-                issues: issues, claude: claude, logger: logger, watch: watch_formatter }
+                issues: issues, state_machine: state_machine, claude: claude, logger: logger,
+                watch: watch_formatter }
         handle_result(result, ctx)
       end
 
@@ -110,12 +113,10 @@ module Ocak
         )
 
         if merger.merge(ctx[:issue_number], worktree)
-          ctx[:issues].transition(ctx[:issue_number], from: ctx[:config].label_in_progress,
-                                                      to: ctx[:config].label_completed)
+          ctx[:state_machine].mark_completed(ctx[:issue_number])
           puts "Issue ##{ctx[:issue_number]} resumed and merged successfully!"
         else
-          ctx[:issues].transition(ctx[:issue_number], from: ctx[:config].label_in_progress,
-                                                      to: ctx[:config].label_failed)
+          ctx[:state_machine].mark_failed(ctx[:issue_number])
           warn "Issue ##{ctx[:issue_number]} merge failed after resume"
         end
       end

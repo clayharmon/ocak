@@ -14,7 +14,8 @@ lib/ocak/
 ├── agent_generator.rb     # Generates agent/skill/hook files from ERB templates, optionally enhanced via claude -p
 ├── pipeline_runner.rb     # Orchestration: poll → plan → worktree → delegate to executor → merge
 ├── batch_processing.rb    # BatchProcessing module (included by PipelineRunner) — process_issues, run_batch, process_one_issue, build_issue_result; resolves per-issue target repos in multi-repo mode
-├── instance_builders.rb   # InstanceBuilders module (included by PipelineRunner) — factory methods for logger, claude, merge manager; setup helpers
+├── instance_builders.rb   # InstanceBuilders module (included by PipelineRunner) — factory methods for logger, claude, merge manager, state machine; setup helpers
+├── issue_state_machine.rb # IssueStateMachine — encapsulates all label transitions (mark_in_progress, mark_completed, mark_failed, mark_interrupted, mark_for_review, mark_resuming)
 ├── shutdown_handling.rb   # ShutdownHandling module (included by PipelineRunner) — graceful/force shutdown, interrupt/error handling, summary
 ├── merge_orchestration.rb # MergeOrchestration module (included by PipelineRunner) — PR creation, audit blocking, manual review, label transitions
 ├── failure_reporting.rb   # FailureReporting module — shared label transition + failure comment posting; included by PipelineRunner and Commands::Resume

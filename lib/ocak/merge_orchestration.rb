@@ -14,10 +14,10 @@ module Ocak
       elsif @config.manual_review
         handle_batch_manual_review(result, merger: merger, issues: issues, logger: logger)
       elsif merger.merge(result[:issue_number], result[:worktree])
-        issues.transition(result[:issue_number], from: @config.label_in_progress, to: @config.label_completed)
+        @state_machine.mark_completed(result[:issue_number])
         logger.info("Issue ##{result[:issue_number]} merged successfully")
       else
-        issues.transition(result[:issue_number], from: @config.label_in_progress, to: @config.label_failed)
+        @state_machine.mark_failed(result[:issue_number])
         logger.error("Issue ##{result[:issue_number]} merge failed")
       end
     end
@@ -40,27 +40,26 @@ module Ocak
                    end
           claude.run_agent('merger', prompt, chdir: target_dir)
         end
-        issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_completed)
+        @state_machine.mark_completed(issue_number)
         logger.info("Issue ##{issue_number} completed successfully")
       end
     end
 
-    def handle_single_manual_review(issue_number, logger:, claude:, issues:, chdir: @config.project_dir)
+    def handle_single_manual_review(issue_number, logger:, claude:, issues: nil, chdir: @config.project_dir) # rubocop:disable Lint/UnusedMethodArgument
       claude.run_agent('merger',
                        "Create a PR for issue ##{issue_number} but do NOT merge it and do NOT close the issue",
                        chdir: chdir)
-      issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_awaiting_review)
+      @state_machine.mark_for_review(issue_number)
       logger.info("Issue ##{issue_number} PR created (manual review mode)")
     end
 
-    def handle_batch_manual_review(result, merger:, issues:, logger:)
+    def handle_batch_manual_review(result, merger:, logger:, issues: nil) # rubocop:disable Lint/UnusedMethodArgument
       pr_number = merger.create_pr_only(result[:issue_number], result[:worktree])
       if pr_number
-        issues.transition(result[:issue_number], from: @config.label_in_progress,
-                                                 to: @config.label_awaiting_review)
+        @state_machine.mark_for_review(result[:issue_number])
         logger.info("Issue ##{result[:issue_number]} PR ##{pr_number} created (manual review mode)")
       else
-        issues.transition(result[:issue_number], from: @config.label_in_progress, to: @config.label_failed)
+        @state_machine.mark_failed(result[:issue_number])
         logger.error("Issue ##{result[:issue_number]} PR creation failed")
       end
     end
@@ -78,11 +77,10 @@ module Ocak
       pr_number = merger.create_pr_only(result[:issue_number], result[:worktree])
       if pr_number
         issues.pr_comment(pr_number, "## Audit Report\n\n#{audit_output}")
-        issues.transition(result[:issue_number], from: @config.label_in_progress,
-                                                 to: @config.label_awaiting_review)
+        @state_machine.mark_for_review(result[:issue_number])
         logger.info("Issue ##{result[:issue_number]} PR ##{pr_number} created (audit findings)")
       else
-        issues.transition(result[:issue_number], from: @config.label_in_progress, to: @config.label_failed)
+        @state_machine.mark_failed(result[:issue_number])
         logger.error("Issue ##{result[:issue_number]} PR creation failed")
       end
     end

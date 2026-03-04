@@ -6,6 +6,7 @@ require_relative '../config'
 require_relative '../claude_runner'
 require_relative '../git_utils'
 require_relative '../issue_backend'
+require_relative '../issue_state_machine'
 require_relative '../pipeline_executor'
 require_relative '../step_comments'
 require_relative '../logger'
@@ -44,6 +45,7 @@ module Ocak
         watch_formatter = options[:watch] ? WatchFormatter.new : nil
         claude = ClaudeRunner.new(config: @config, logger: logger, watch: watch_formatter)
         issues = IssueBackend.build(config: @config, logger: logger)
+        @state_machine = IssueStateMachine.new(config: @config, issues: issues)
 
         logger.info("=== Hiz (fast mode) for issue ##{issue_number} ===")
 
@@ -68,7 +70,7 @@ module Ocak
         start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         chdir = @config.project_dir
 
-        issues.transition(issue_number, from: @config.label_ready, to: @config.label_in_progress)
+        @state_machine.mark_in_progress(issue_number)
         post_hiz_start_comment(issue_number, state: state)
         begin
           branch = create_branch(issue_number, chdir)
@@ -185,7 +187,7 @@ module Ocak
 
       def handle_failure(issue_number, phase, output, issues:, logger:, branch: nil)
         logger.error("Issue ##{issue_number} failed at phase: #{phase}")
-        issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_failed)
+        @state_machine.mark_failed(issue_number)
         begin
           sanitized = output.to_s[0..1000].gsub('```', "'''")
           issues.comment(issue_number,
