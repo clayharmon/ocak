@@ -72,6 +72,17 @@ module Ocak
     def require_comment    = dig(:safety, :require_comment)
     def max_issues_per_run = dig(:safety, :max_issues_per_run) || 5
 
+    # Multi-repo
+    def multi_repo? = dig(:repos).is_a?(Array) && !dig(:repos).empty?
+
+    def resolve_repo(name)
+      repos = dig(:repos) || []
+      entry = repos.find { |r| r[:name].to_s == name.to_s }
+      raise ConfigError, "Unknown repo '#{name}'" unless entry
+
+      { name: entry[:name].to_s, path: File.expand_path(entry[:path].to_s) }
+    end
+
     # Issues
     def issue_backend = dig(:issues, :backend)
     def local_issues? = issue_backend == 'local'

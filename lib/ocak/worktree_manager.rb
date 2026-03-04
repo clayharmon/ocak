@@ -7,10 +7,11 @@ require 'shellwords'
 
 module Ocak
   class WorktreeManager
-    def initialize(config:, logger: nil)
+    def initialize(config:, logger: nil, repo_dir: nil)
       @config = config
       @logger = logger
-      @worktree_base = File.join(config.project_dir, config.worktree_dir)
+      @repo_dir = repo_dir || config.project_dir
+      @worktree_base = File.join(@repo_dir, config.worktree_dir)
       @mutex = Mutex.new
     end
 
@@ -31,7 +32,8 @@ module Ocak
           raise WorktreeError, "Setup command failed: #{stderr}" unless status.success?
         end
 
-        Worktree.new(path: path, branch: branch, issue_number: issue_number)
+        Worktree.new(path: path, branch: branch, issue_number: issue_number,
+                     target_repo: @repo_dir == @config.project_dir ? nil : { path: @repo_dir })
       end
     end
 
@@ -68,14 +70,14 @@ module Ocak
       removed
     end
 
-    Worktree = Struct.new(:path, :branch, :issue_number, keyword_init: true) # rubocop:disable Style/RedundantStructKeywordInit
+    Worktree = Struct.new(:path, :branch, :issue_number, :target_repo, keyword_init: true) # rubocop:disable Style/RedundantStructKeywordInit
 
     class WorktreeError < StandardError; end
 
     private
 
     def git(*)
-      Open3.capture3('git', *, chdir: @config.project_dir)
+      Open3.capture3('git', *, chdir: @repo_dir)
     end
 
     def parse_worktree_list(output)

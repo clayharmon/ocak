@@ -32,7 +32,8 @@ RSpec.describe Ocak::PipelineRunner do
                       { 'agent' => 'implementer', 'role' => 'implement' },
                       { 'agent' => 'reviewer', 'role' => 'review' },
                       { 'agent' => 'implementer', 'role' => 'fix', 'condition' => 'has_findings' }
-                    ])
+                    ],
+                    multi_repo?: false)
   end
 
   let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, debug: nil, log_file_path: nil) }
