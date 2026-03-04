@@ -89,8 +89,28 @@ RSpec.describe Ocak::IssueStateMachine do
   context 'when transition raises' do
     before { allow(issues).to receive(:transition).and_raise(StandardError, 'GitHub API down') }
 
-    it 'propagates the error' do
+    it 'propagates the error on mark_in_progress' do
+      expect { state_machine.mark_in_progress(42) }.to raise_error(StandardError, 'GitHub API down')
+    end
+
+    it 'propagates the error on mark_completed' do
+      expect { state_machine.mark_completed(42) }.to raise_error(StandardError, 'GitHub API down')
+    end
+
+    it 'propagates the error on mark_failed' do
       expect { state_machine.mark_failed(42) }.to raise_error(StandardError, 'GitHub API down')
+    end
+
+    it 'propagates the error on mark_interrupted' do
+      expect { state_machine.mark_interrupted(42) }.to raise_error(StandardError, 'GitHub API down')
+    end
+
+    it 'propagates the error on mark_for_review' do
+      expect { state_machine.mark_for_review(42) }.to raise_error(StandardError, 'GitHub API down')
+    end
+
+    it 'propagates the error on mark_resuming' do
+      expect { state_machine.mark_resuming(42) }.to raise_error(StandardError, 'GitHub API down')
     end
   end
 end
