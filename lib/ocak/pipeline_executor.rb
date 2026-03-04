@@ -44,6 +44,7 @@ module Ocak
 
       report = RunReport.new(complexity: complexity)
       state = build_initial_state(complexity, report)
+      state[:issue_data] = @issues&.view(issue_number)
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       post_pipeline_start_comment(issue_number, state) if post_start_comment
 

@@ -19,7 +19,7 @@ RSpec.describe Ocak::StepExecution do
       end
 
       def post_step_comment(issue_number, message, **); end
-      def build_step_prompt(_role, _issue_number, _review_output) = 'test prompt'
+      def build_step_prompt(_role, _issue_number, _review_output, issue_data: nil) = 'test prompt' # rubocop:disable Lint/UnusedMethodArgument
       def record_step_result(*) = nil
     end
   end

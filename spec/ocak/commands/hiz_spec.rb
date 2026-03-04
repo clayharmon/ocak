@@ -81,8 +81,8 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(claude).to have_received(:run_agent)
-        .with('implementer', 'Implement GitHub issue #42', chdir: '/project',
-                                                           model: 'sonnet')
+        .with('implementer', start_with('Implement GitHub issue #42'), chdir: '/project',
+                                                                       model: 'sonnet')
       expect(claude).to have_received(:run_agent)
         .with('reviewer', 'Review the changes for GitHub issue #42. Run: git diff main',
               chdir: '/project', model: 'haiku')

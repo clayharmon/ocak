@@ -38,6 +38,7 @@ module Ocak
                    else
                      "Create a PR, merge it, and close issue ##{issue_number}"
                    end
+          prompt += merger_issue_context(issue_number, issues)
           claude.run_agent('merger', prompt, chdir: target_dir)
         end
         @state_machine.mark_completed(issue_number)
@@ -45,10 +46,10 @@ module Ocak
       end
     end
 
-    def handle_single_manual_review(issue_number, logger:, claude:, issues: nil, chdir: @config.project_dir) # rubocop:disable Lint/UnusedMethodArgument
-      claude.run_agent('merger',
-                       "Create a PR for issue ##{issue_number} but do NOT merge it and do NOT close the issue",
-                       chdir: chdir)
+    def handle_single_manual_review(issue_number, logger:, claude:, issues: nil, chdir: @config.project_dir)
+      prompt = "Create a PR for issue ##{issue_number} but do NOT merge it and do NOT close the issue"
+      prompt += merger_issue_context(issue_number, issues)
+      claude.run_agent('merger', prompt, chdir: chdir)
       @state_machine.mark_for_review(issue_number)
       logger.info("Issue ##{issue_number} PR created (manual review mode)")
     end
@@ -94,6 +95,13 @@ module Ocak
 
       issues.pr_comment(pr_number, "## Audit Report\n\n#{audit_output}")
       logger.info("Posted audit comment on PR ##{pr_number}")
+    end
+
+    def merger_issue_context(issue_number, issues)
+      issue_data = issues&.view(issue_number)
+      return '' unless issue_data
+
+      "\n\n<issue_data>\nTitle: #{issue_data['title']}\n\n#{issue_data['body']}\n</issue_data>"
     end
 
     def pipeline_has_merge_step?

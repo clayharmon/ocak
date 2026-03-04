@@ -14,14 +14,27 @@ module Ocak
       'merge' => 'Create a PR, merge it, and close issue #%<issue>s'
     }.freeze
 
-    def build_step_prompt(role, issue_number, review_output)
-      if role == 'fix'
-        "Fix these review findings for issue ##{issue_number}:\n\n<review_output>\n#{review_output}\n</review_output>"
-      elsif STEP_PROMPTS.key?(role)
-        format(STEP_PROMPTS[role], issue: issue_number)
-      else
-        "Run #{role} for GitHub issue ##{issue_number}"
-      end
+    ISSUE_CONTEXT_ROLES = %w[implement document merge].freeze
+
+    def build_step_prompt(role, issue_number, review_output, issue_data: nil)
+      prompt = if role == 'fix'
+                 "Fix these review findings for issue ##{issue_number}:\n\n" \
+                   "<review_output>\n#{review_output}\n</review_output>"
+               elsif STEP_PROMPTS.key?(role)
+                 format(STEP_PROMPTS[role], issue: issue_number)
+               else
+                 "Run #{role} for GitHub issue ##{issue_number}"
+               end
+
+      prompt += format_issue_context(issue_data) if issue_data && ISSUE_CONTEXT_ROLES.include?(role)
+      prompt
+    end
+
+    def format_issue_context(issue_data)
+      parts = []
+      parts << "Title: #{issue_data['title']}" if issue_data['title']
+      parts << issue_data['body'] if issue_data['body']
+      "\n\n<issue_data>\n#{parts.join("\n\n")}\n</issue_data>"
     end
 
     def plan_batches(issues, logger:, claude:)

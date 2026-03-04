@@ -18,7 +18,8 @@ module Ocak
       end
 
       result = execute_step(step, issue_number, state[:last_review_output], logger: logger, claude: claude,
-                                                                            chdir: chdir)
+                                                                            chdir: chdir,
+                                                                            issue_data: state[:issue_data])
       state[:report].record_step(index: idx, agent: agent, role: role, status: 'completed', result: result)
       ctx = StateManagement::StepContext.new(issue_number, idx, role, result, state, logger, chdir)
       record_step_result(ctx, mutex: mutex)
@@ -37,12 +38,12 @@ module Ocak
       state[:steps_skipped] += 1
     end
 
-    def execute_step(step, issue_number, review_output, logger:, claude:, chdir:)
+    def execute_step(step, issue_number, review_output, logger:, claude:, chdir:, issue_data: nil) # rubocop:disable Metrics/ParameterLists
       agent = step[:agent].to_s
       role = step[:role].to_s
       logger.info("--- Phase: #{role} (#{agent}) ---")
       post_step_comment(issue_number, "🔄 **Phase: #{role}** (#{agent})")
-      prompt = build_step_prompt(role, issue_number, review_output)
+      prompt = build_step_prompt(role, issue_number, review_output, issue_data: issue_data)
       opts = { chdir: chdir }
       opts[:model] = step[:model].to_s if step[:model]
       claude.run_agent(agent.tr('_', '-'), prompt, **opts)
