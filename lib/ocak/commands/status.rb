@@ -3,6 +3,7 @@
 require 'open3'
 require 'json'
 require_relative '../config'
+require_relative '../command_runner'
 require_relative '../issue_backend'
 require_relative '../run_report'
 require_relative '../worktree_manager'
@@ -10,6 +11,8 @@ require_relative '../worktree_manager'
 module Ocak
   module Commands
     class Status < Dry::CLI::Command
+      include CommandRunner
+
       desc 'Show pipeline status'
 
       option :report, type: :boolean, default: false, desc: 'Show run reports'
@@ -207,18 +210,12 @@ module Ocak
       end
 
       def fetch_issue_count(label, config)
-        stdout, _, status = Open3.capture3(
-          'gh', 'issue', 'list',
-          '--label', label,
-          '--state', 'open',
-          '--json', 'number',
-          '--limit', '100',
-          chdir: config.project_dir
-        )
-        return 0 unless status.success?
+        result = run_gh('issue', 'list', '--label', label, '--state', 'open',
+                        '--json', 'number', '--limit', '100', chdir: config.project_dir)
+        return 0 unless result.success?
 
-        JSON.parse(stdout).size
-      rescue JSON::ParserError, Errno::ENOENT
+        JSON.parse(result.stdout).size
+      rescue JSON::ParserError
         0
       end
 

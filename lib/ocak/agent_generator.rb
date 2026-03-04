@@ -4,9 +4,12 @@ require 'erb'
 require 'fileutils'
 require 'open3'
 require_relative 'claude_runner'
+require_relative 'command_runner'
 
 module Ocak
   class AgentGenerator
+    include CommandRunner
+
     AGENT_TEMPLATES = %w[
       implementer reviewer security_reviewer documenter
       merger pipeline planner auditor
@@ -155,6 +158,7 @@ module Ocak
     end
 
     def claude_available?
+      # Uses Open3 directly; 'which' is not a git/gh command
       _, _, status = Open3.capture3('which', 'claude')
       status.success?
     rescue Errno::ENOENT => e
@@ -163,6 +167,7 @@ module Ocak
     end
 
     def run_claude_prompt(prompt)
+      # Uses Open3 directly; 'claude' is not a git/gh command
       stdout, _, status = Open3.capture3(
         'claude', '-p',
         '--output-format', 'text',

@@ -4,6 +4,7 @@ require 'open3'
 require 'securerandom'
 require_relative '../config'
 require_relative '../claude_runner'
+require_relative '../command_runner'
 require_relative '../git_utils'
 require_relative '../issue_backend'
 require_relative '../issue_state_machine'
@@ -15,6 +16,7 @@ module Ocak
   module Commands
     class Hiz < Dry::CLI::Command
       include StepComments
+      include CommandRunner
 
       desc 'Fast-mode: implement an issue with Sonnet, create a PR (no merge)'
 
@@ -121,8 +123,8 @@ module Ocak
         branch = "hiz/issue-#{issue_number}-#{SecureRandom.hex(4)}"
         raise "Unsafe branch name: #{branch}" unless GitUtils.safe_branch_name?(branch)
 
-        _, stderr, status = Open3.capture3('git', 'checkout', '-b', branch, chdir: chdir)
-        raise "Failed to create branch #{branch}: #{stderr}" unless status.success?
+        result = run_git('checkout', '-b', branch, chdir: chdir)
+        raise "Failed to create branch #{branch}: #{result.error}" unless result.success?
 
         branch
       end
@@ -130,10 +132,10 @@ module Ocak
       def push_and_create_pr(issue_number, branch, logger:, chdir:, state:)
         commit_changes(issue_number, chdir, logger: logger)
 
-        _, stderr, status = Open3.capture3('git', 'push', '-u', 'origin', branch, chdir: chdir)
-        unless status.success?
-          logger.error("Push failed: #{stderr}")
-          handle_failure(issue_number, 'push', stderr, issues: state.issues, logger: logger, branch: branch)
+        push_result = run_git('push', '-u', 'origin', branch, chdir: chdir)
+        unless push_result.success?
+          logger.error("Push failed: #{push_result.error}")
+          handle_failure(issue_number, 'push', push_result.error, issues: state.issues, logger: logger, branch: branch)
           return
         end
 
@@ -142,21 +144,16 @@ module Ocak
         pr_title = issue_title ? "Fix ##{issue_number}: #{issue_title}" : "Fix ##{issue_number}"
         pr_body = build_pr_body(issue_number, state: state)
 
-        stdout, stderr, status = Open3.capture3(
-          'gh', 'pr', 'create',
-          '--title', pr_title,
-          '--body', pr_body,
-          '--head', branch,
-          chdir: chdir
-        )
+        pr_result = run_gh('pr', 'create', '--title', pr_title, '--body', pr_body, '--head', branch, chdir: chdir)
 
-        if status.success?
-          pr_url = stdout.strip
+        if pr_result.success?
+          pr_url = pr_result.output
           logger.info("PR created: #{pr_url}")
           puts "PR created: #{pr_url}"
         else
-          logger.error("PR creation failed: #{stderr}")
-          handle_failure(issue_number, 'pr-create', stderr, issues: state.issues, logger: logger, branch: branch)
+          logger.error("PR creation failed: #{pr_result.error}")
+          handle_failure(issue_number, 'pr-create', pr_result.error, issues: state.issues, logger: logger,
+                                                                     branch: branch)
         end
       end
 
@@ -202,8 +199,8 @@ module Ocak
       end
 
       def delete_branch(branch, logger:)
-        _, stderr, status = Open3.capture3('git', 'branch', '-D', branch, chdir: @config.project_dir)
-        logger.warn("Failed to delete branch #{branch}: #{stderr}") unless status.success?
+        result = run_git('branch', '-D', branch, chdir: @config.project_dir)
+        logger.warn("Failed to delete branch #{branch}: #{result.error}") unless result.success?
       rescue StandardError => e
         logger.warn("Error deleting branch #{branch}: #{e.message}")
       end

@@ -2,6 +2,7 @@
 
 require 'open3'
 require 'fileutils'
+require_relative 'command_runner'
 require_relative 'pipeline_state'
 require_relative 'run_report'
 require_relative 'verification'
@@ -13,6 +14,7 @@ require_relative 'parallel_execution'
 
 module Ocak
   class PipelineExecutor
+    include CommandRunner
     include Verification
     include Planner
     include StepComments
@@ -145,8 +147,12 @@ module Ocak
     end
 
     def current_branch(chdir, logger: nil)
-      stdout, = Open3.capture3('git', 'rev-parse', '--abbrev-ref', 'HEAD', chdir: chdir)
-      stdout.strip
+      result = run_git('rev-parse', '--abbrev-ref', 'HEAD', chdir: chdir)
+      if result.status.nil?
+        logger&.debug("Could not determine current branch: #{result.error}")
+        return nil
+      end
+      result.output
     rescue StandardError => e
       logger&.debug("Could not determine current branch: #{e.message}")
       nil

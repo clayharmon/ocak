@@ -23,19 +23,16 @@ RSpec.describe Ocak::Commands::Status do
 
   let(:manager) { instance_double(Ocak::WorktreeManager) }
 
+  let(:success_status) { instance_double(Process::Status, success?: true) }
+  let(:empty_gh_result) { Ocak::CommandRunner::CommandResult.new('[]', '', success_status) }
+
   before do
     allow(Ocak::Config).to receive(:load).and_return(config)
     allow(Ocak::WorktreeManager).to receive(:new).and_return(manager)
     allow(manager).to receive(:list).and_return([])
 
-    # Mock gh issue list for all labels
-    allow(Open3).to receive(:capture3) do |*args, **_kwargs|
-      if args.include?('gh')
-        ['[]', '', instance_double(Process::Status, success?: true)]
-      else
-        ['', '', instance_double(Process::Status, success?: true)]
-      end
-    end
+    # Mock run_gh on the command instance
+    allow(command).to receive(:run_gh).and_return(empty_gh_result)
   end
 
   after { FileUtils.remove_entry(dir) }
@@ -45,10 +42,10 @@ RSpec.describe Ocak::Commands::Status do
   end
 
   it 'displays issue counts per label' do
-    allow(Open3).to receive(:capture3)
-      .with('gh', 'issue', 'list', '--label', 'auto-ready', '--state', 'open',
+    allow(command).to receive(:run_gh)
+      .with('issue', 'list', '--label', 'auto-ready', '--state', 'open',
             '--json', 'number', '--limit', '100', chdir: dir)
-      .and_return(['[{"number":1},{"number":2}]', '', instance_double(Process::Status, success?: true)])
+      .and_return(Ocak::CommandRunner::CommandResult.new('[{"number":1},{"number":2}]', '', success_status))
 
     expect { command.call }.to output(/ready: 2/).to_stdout
   end
