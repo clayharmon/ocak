@@ -1,30 +1,41 @@
 # frozen_string_literal: true
 
+require 'yaml'
+
 module Ocak
-  # Resolves an issue's target repo from its body frontmatter.
-  # Returns a hash with :name and :path keys, or raises TargetResolutionError.
   module TargetResolver
-    class TargetResolutionError < StandardError; end
-
-    # Parses the issue body for a `target_repo:` frontmatter key and resolves
-    # it to a configured repo entry via Config#resolve_repo.
-    #
-    # @param issue [Hash] GitHub issue hash with at least 'body' and 'number' keys
-    # @param config [Ocak::Config] project config
-    # @return [Hash, nil] { name:, path: } or nil if no target specified
-    # @raise [TargetResolutionError] if target name is specified but not configured
+    # Resolves the target repo for an issue.
+    # Returns { name:, path: } hash or nil (single-repo mode).
+    # Raises TargetResolutionError on missing/invalid target in multi-repo mode.
     def self.resolve(issue, config:)
-      name = extract_target_name(issue['body'] || '')
-      return nil unless name
+      return nil unless config.multi_repo?
 
-      config.resolve_repo(name)
-    rescue Config::ConfigError => e
-      raise TargetResolutionError, e.message
+      body = issue['body'].to_s
+      repo_name = extract_target_name(body, field: config.target_field)
+
+      unless repo_name
+        raise TargetResolutionError,
+              "Issue ##{issue['number']} is missing required '#{config.target_field}' field in body. " \
+              "Known repos: #{config.repos.keys.join(', ')}"
+      end
+
+      config.resolve_repo(repo_name)
     end
 
-    private_class_method def self.extract_target_name(body)
-      match = body.match(/^target_repo:\s*(\S+)/)
-      match&.captures&.first
+    # Extract target name from YAML front-matter.
+    # Returns the target name string, or nil if not found.
+    def self.extract_target_name(body, field:)
+      match = body.match(/\A---\s*\n(.*?)\n---/m)
+      return nil unless match
+
+      frontmatter = YAML.safe_load(match[1])
+      return nil unless frontmatter.is_a?(Hash)
+
+      frontmatter[field]&.to_s&.strip
+    rescue Psych::SyntaxError
+      nil
     end
+
+    class TargetResolutionError < StandardError; end
   end
 end

@@ -400,6 +400,96 @@ RSpec.describe Ocak::Config do
     end
   end
 
+  describe '#repos' do
+    it 'returns the repos hash when configured' do
+      config = described_class.new({ repos: { 'my-gem': '~/dev/my-gem' } }, dir)
+      expect(config.repos).to eq({ 'my-gem': '~/dev/my-gem' })
+    end
+
+    it 'returns nil when repos is not configured' do
+      config = described_class.new({}, dir)
+      expect(config.repos).to be_nil
+    end
+  end
+
+  describe '#multi_repo?' do
+    it 'returns true when repos is a non-empty hash' do
+      config = described_class.new({ repos: { 'my-gem': '~/dev/my-gem' } }, dir)
+      expect(config.multi_repo?).to be true
+    end
+
+    it 'returns false when repos is absent' do
+      config = described_class.new({}, dir)
+      expect(config.multi_repo?).to be false
+    end
+
+    it 'returns false when repos is an empty hash' do
+      config = described_class.new({ repos: {} }, dir)
+      expect(config.multi_repo?).to be false
+    end
+
+    it 'returns false when repos is nil' do
+      config = described_class.new({ repos: nil }, dir)
+      expect(config.multi_repo?).to be false
+    end
+  end
+
+  describe '#target_field' do
+    it 'returns the configured value' do
+      config = described_class.new({ target_field: 'my_field' }, dir)
+      expect(config.target_field).to eq('my_field')
+    end
+
+    it 'defaults to target_repo' do
+      config = described_class.new({}, dir)
+      expect(config.target_field).to eq('target_repo')
+    end
+  end
+
+  describe '#resolve_repo' do
+    subject(:config) { described_class.new({ repos: { 'my-gem': dir } }, dir) }
+
+    it 'returns name and expanded path for a known repo' do
+      result = config.resolve_repo('my-gem')
+      expect(result).to eq({ name: 'my-gem', path: dir })
+    end
+
+    it 'expands ~ in paths' do
+      home = File.expand_path('~')
+      config_with_tilde = described_class.new({ repos: { home: '~' } }, dir)
+      result = config_with_tilde.resolve_repo('home')
+      expect(result).to eq({ name: 'home', path: home })
+    end
+
+    it 'accepts a symbol name' do
+      result = config.resolve_repo(:'my-gem')
+      expect(result).to eq({ name: 'my-gem', path: dir })
+    end
+
+    it 'raises ConfigError for unknown repo name' do
+      expect { config.resolve_repo('other-gem') }.to raise_error(
+        Ocak::Config::ConfigError,
+        /Unknown repo 'other-gem'. Known repos: my-gem/
+      )
+    end
+
+    it 'raises ConfigError when path does not exist' do
+      config_with_missing = described_class.new({ repos: { missing: '/nonexistent/path/xyz' } }, dir)
+      expect { config_with_missing.resolve_repo('missing') }.to raise_error(
+        Ocak::Config::ConfigError,
+        /Repo path does not exist/
+      )
+    end
+
+    it 'raises ConfigError when no repos configured' do
+      config_no_repos = described_class.new({}, dir)
+      expect { config_no_repos.resolve_repo('my-gem') }.to raise_error(
+        Ocak::Config::ConfigError,
+        /No repos configured in ocak.yml/
+      )
+    end
+  end
+
   describe 'validation' do
     it 'raises on non-hash data' do
       expect { described_class.new('invalid', dir) }.to raise_error(Ocak::Config::ConfigError)

@@ -437,6 +437,66 @@ RSpec.describe Ocak::IssueFetcher do
     end
   end
 
+  describe '#repo_nwo' do
+    it 'returns nameWithOwner on success' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner', chdir: '/project')
+        .and_return(["clayharmon/ocak\n", '', success_status])
+
+      expect(fetcher.repo_nwo).to eq('clayharmon/ocak')
+    end
+
+    it 'returns nil when gh repo view fails' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner', chdir: '/project')
+        .and_return(['', 'not a git repo', failure_status])
+
+      expect(fetcher.repo_nwo).to be_nil
+    end
+
+    it 'caches the result and only calls gh once' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner', chdir: '/project')
+        .and_return(["clayharmon/ocak\n", '', success_status])
+
+      fetcher.repo_nwo
+      fetcher.repo_nwo
+
+      expect(Open3).to have_received(:capture3)
+        .with('gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner', chdir: '/project')
+        .once
+    end
+
+    it 'caches nil result and does not retry' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner', chdir: '/project')
+        .and_return(['', 'error', failure_status])
+
+      fetcher.repo_nwo
+      fetcher.repo_nwo
+
+      expect(Open3).to have_received(:capture3)
+        .with('gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner', chdir: '/project')
+        .once
+    end
+
+    it 'strips whitespace from output' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner', chdir: '/project')
+        .and_return(["  org/repo  \n", '', success_status])
+
+      expect(fetcher.repo_nwo).to eq('org/repo')
+    end
+
+    it 'returns empty string when gh succeeds but returns empty output' do
+      allow(Open3).to receive(:capture3)
+        .with('gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner', chdir: '/project')
+        .and_return(['', '', success_status])
+
+      expect(fetcher.repo_nwo).to eq('')
+    end
+  end
+
   describe '#current_user (private)' do
     it 'returns the login on success' do
       allow(Open3).to receive(:capture3)
