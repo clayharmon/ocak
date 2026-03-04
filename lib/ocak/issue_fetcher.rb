@@ -134,6 +134,14 @@ module Ocak
       nil
     end
 
+    def repo_nwo
+      stdout, _, status = run_gh('repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner')
+      return nil unless status.success?
+
+      nwo = stdout.strip
+      nwo.empty? ? nil : nwo
+    end
+
     private
 
     def in_progress?(issue)
