@@ -9,6 +9,7 @@ RSpec.describe Ocak::Commands::Init do
   subject(:command) { described_class.new }
 
   let(:dir) { Dir.mktmpdir }
+  let(:user_config_path) { File.join(dir, 'user_config.yml') }
   let(:stack) do
     Ocak::StackDetector::Result.new(
       language: 'ruby',
@@ -39,6 +40,8 @@ RSpec.describe Ocak::Commands::Init do
     additions_path = File.join(dir, 'gitignore_additions.txt')
     File.write(additions_path, "logs/\n.claude/worktrees/\n")
     allow(Ocak).to receive(:templates_dir).and_return(dir)
+    # Redirect user config to temp dir so tests never write to ~/.config
+    allow(Ocak::Config).to receive(:user_config_path).and_return(user_config_path)
   end
 
   after { FileUtils.remove_entry(dir) }
@@ -115,5 +118,55 @@ RSpec.describe Ocak::Commands::Init do
 
     gitignore = File.read(File.join(dir, '.gitignore'))
     expect(gitignore).to include('logs/')
+  end
+
+  describe 'user config scaffolding' do
+    it 'creates user config on first init' do
+      command.call
+      expect(File.exist?(user_config_path)).to be true
+    end
+
+    it 'prints created message for new user config' do
+      expect { command.call }.to output(/Created #{Regexp.escape(user_config_path)}/).to_stdout
+    end
+
+    it 'does not overwrite user config on second init' do
+      File.write(user_config_path, "existing: true\n")
+
+      command.call
+
+      expect(File.read(user_config_path)).to eq("existing: true\n")
+    end
+
+    it 'prints skip message when user config already exists' do
+      File.write(user_config_path, "existing: true\n")
+
+      expect { command.call }.to output(/#{Regexp.escape(user_config_path)} already exists — skipping/).to_stdout
+    end
+
+    it 'user config content contains commented-out repos example' do
+      command.call
+      content = File.read(user_config_path)
+      expect(content).to include('# repos:')
+    end
+
+    it 'user config content contains commented-out pipeline example' do
+      command.call
+      content = File.read(user_config_path)
+      expect(content).to include('# pipeline:')
+      expect(content).to include('max_parallel:')
+    end
+
+    it 'summary mentions user config path' do
+      expect { command.call }.to output(/#{Regexp.escape(user_config_path)}/).to_stdout
+    end
+
+    it 'does not overwrite user config with --force (only project config)' do
+      File.write(user_config_path, "existing: true\n")
+
+      command.call(force: true)
+
+      expect(File.read(user_config_path)).to eq("existing: true\n")
+    end
   end
 end

@@ -35,6 +35,7 @@ module Ocak
         )
 
         generate_files(generator, project_dir, options)
+        scaffold_user_config
         update_settings(project_dir, stack)
         update_gitignore(project_dir)
         create_labels(project_dir)
@@ -81,6 +82,36 @@ module Ocak
         puts "  Security:  #{stack.security_commands.empty? ? 'none detected' : stack.security_commands.join(', ')}"
         puts "  Monorepo:  yes (#{stack.packages.size} packages)" if stack.respond_to?(:monorepo) && stack.monorepo
         puts ''
+      end
+
+      def scaffold_user_config
+        path = Config.user_config_path
+        if File.exist?(path)
+          puts "  #{path} already exists — skipping"
+          return
+        end
+
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, user_config_template)
+        puts "  Created #{path}"
+      end
+
+      def user_config_template
+        <<~YAML
+          # ~/.config/ocak/config.yml
+          # Machine-specific Ocak settings (not committed to any repo)
+
+          # Map repo names to local paths (used with multi_repo: true in project ocak.yml)
+          # repos:
+          #   my-gem: ~/dev/my-gem
+          #   other-gem: ~/dev/other-gem
+
+          # Pipeline tuning for this machine
+          # pipeline:
+          #   max_parallel: 3      # default: 5
+          #   poll_interval: 60    # seconds between polls, default: 60
+          #   cost_budget: 10.00   # max $ per pipeline run
+        YAML
       end
 
       def update_settings(project_dir, stack)
@@ -206,6 +237,7 @@ module Ocak
         end
         puts '  .claude/hooks/                     — lint + test hooks'
         puts '  .claude/settings.json              — permissions & hooks config'
+        puts "  #{Config.user_config_path}  — machine-specific settings (not committed)"
         puts ''
         puts 'Next steps:'
         puts '  1. Review ocak.yml and adjust settings'

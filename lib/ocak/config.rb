@@ -5,14 +5,28 @@ require 'yaml'
 module Ocak
   class Config
     CONFIG_FILE = 'ocak.yml'
+    USER_CONFIG_DIR = 'ocak'
+    USER_CONFIG_FILE = 'config.yml'
 
     attr_reader :project_dir
+
+    def self.user_config_path
+      base = ENV.fetch('XDG_CONFIG_HOME', File.expand_path('~/.config'))
+      File.join(base, USER_CONFIG_DIR, USER_CONFIG_FILE)
+    end
 
     def self.load(dir = Dir.pwd)
       path = File.join(dir, CONFIG_FILE)
       raise ConfigNotFound, "No ocak.yml found in #{dir}. Run `ocak init` first." unless File.exist?(path)
 
-      new(YAML.safe_load_file(path, symbolize_names: true), dir)
+      project_data = YAML.safe_load_file(path, symbolize_names: true) || {}
+      user_data = load_user_config
+
+      merged = deep_merge(user_data, project_data)
+      # repos: is user-only — always take from user config, never project
+      merged[:repos] = user_data[:repos] if user_data[:repos]
+
+      new(merged, dir)
     end
 
     def initialize(data, project_dir = Dir.pwd)
@@ -163,5 +177,27 @@ module Ocak
 
     class ConfigNotFound < StandardError; end
     class ConfigError < StandardError; end
+
+    private_class_method def self.load_user_config
+      path = user_config_path
+      return {} unless File.exist?(path)
+
+      data = YAML.safe_load_file(path, symbolize_names: true)
+      raise ConfigError, "#{path} must be a YAML hash" unless data.is_a?(Hash) || data.nil?
+
+      data || {}
+    rescue Psych::SyntaxError => e
+      raise ConfigError, "Invalid YAML in #{path}: #{e.message}"
+    end
+
+    private_class_method def self.deep_merge(base, override)
+      base.merge(override) do |_key, old_val, new_val|
+        if old_val.is_a?(Hash) && new_val.is_a?(Hash)
+          deep_merge(old_val, new_val)
+        else
+          new_val
+        end
+      end
+    end
   end
 end

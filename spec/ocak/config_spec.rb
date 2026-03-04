@@ -500,4 +500,115 @@ RSpec.describe Ocak::Config do
       expect(config.language).to eq('unknown')
     end
   end
+
+  describe '.user_config_path' do
+    it 'defaults to ~/.config/ocak/config.yml' do
+      allow(ENV).to receive(:fetch).with('XDG_CONFIG_HOME', anything).and_return(File.expand_path('~/.config'))
+      expect(described_class.user_config_path).to eq(
+        File.join(File.expand_path('~/.config'), 'ocak', 'config.yml')
+      )
+    end
+
+    it 'respects XDG_CONFIG_HOME env var' do
+      allow(ENV).to receive(:fetch).with('XDG_CONFIG_HOME', anything).and_return('/custom/config')
+      expect(described_class.user_config_path).to eq('/custom/config/ocak/config.yml')
+    end
+  end
+
+  describe '.load with user config' do
+    let(:user_config_dir) { Dir.mktmpdir }
+    let(:user_config_path) { File.join(user_config_dir, 'config.yml') }
+
+    before do
+      allow(described_class).to receive(:user_config_path).and_return(user_config_path)
+      write_config({ 'stack' => { 'language' => 'ruby' } })
+    end
+
+    after { FileUtils.remove_entry(user_config_dir) }
+
+    it 'behaves identically when user config does not exist' do
+      config = described_class.load(dir)
+      expect(config.language).to eq('ruby')
+      expect(config.repos).to be_nil
+    end
+
+    it 'loads repos from user config' do
+      File.write(user_config_path, YAML.dump({ 'repos' => { 'my-gem' => '~/dev/my-gem' } }))
+      config = described_class.load(dir)
+      expect(config.repos).to eq({ 'my-gem': '~/dev/my-gem' })
+    end
+
+    it 'user repos win when both user and project set repos' do
+      File.write(user_config_path, YAML.dump({ 'repos' => { 'my-gem' => '~/dev/my-gem' } }))
+      write_config({ 'repos' => { 'other-gem' => '~/dev/other-gem' } })
+      config = described_class.load(dir)
+      expect(config.repos.keys).to eq([:'my-gem'])
+    end
+
+    it 'project pipeline.max_parallel wins over user value' do
+      File.write(user_config_path, YAML.dump({ 'pipeline' => { 'max_parallel' => 2 } }))
+      write_config({ 'pipeline' => { 'max_parallel' => 8 } })
+      config = described_class.load(dir)
+      expect(config.max_parallel).to eq(8)
+    end
+
+    it 'user pipeline.max_parallel is used when project does not set it' do
+      File.write(user_config_path, YAML.dump({ 'pipeline' => { 'max_parallel' => 3 } }))
+      config = described_class.load(dir)
+      expect(config.max_parallel).to eq(3)
+    end
+
+    it 'user pipeline.poll_interval is used when project does not set it' do
+      File.write(user_config_path, YAML.dump({ 'pipeline' => { 'poll_interval' => 120 } }))
+      config = described_class.load(dir)
+      expect(config.poll_interval).to eq(120)
+    end
+
+    it 'user pipeline.cost_budget is used when project does not set it' do
+      File.write(user_config_path, YAML.dump({ 'pipeline' => { 'cost_budget' => 5.0 } }))
+      config = described_class.load(dir)
+      expect(config.cost_budget).to eq(5.0)
+    end
+
+    it 'raises ConfigError for invalid YAML in user config' do
+      File.write(user_config_path, "invalid: yaml:\n  bad indent\n  : broken")
+      expect { described_class.load(dir) }.to raise_error(Ocak::Config::ConfigError, /Invalid YAML/)
+    end
+
+    it 'raises ConfigError when user config is not a hash' do
+      File.write(user_config_path, "- item1\n- item2\n")
+      expect { described_class.load(dir) }.to raise_error(
+        Ocak::Config::ConfigError,
+        /must be a YAML hash/
+      )
+    end
+
+    it 'raises ConfigError message includes the file path' do
+      File.write(user_config_path, "- item1\n")
+      expect { described_class.load(dir) }.to raise_error(
+        Ocak::Config::ConfigError,
+        /#{Regexp.escape(user_config_path)}/
+      )
+    end
+
+    it 'handles empty user config file gracefully' do
+      File.write(user_config_path, '')
+      config = described_class.load(dir)
+      expect(config.language).to eq('ruby')
+    end
+
+    it 'handles user config that is empty hash' do
+      File.write(user_config_path, "{}\n")
+      config = described_class.load(dir)
+      expect(config.language).to eq('ruby')
+    end
+
+    it 'deep merges nested pipeline settings' do
+      File.write(user_config_path, YAML.dump({ 'pipeline' => { 'max_parallel' => 2, 'poll_interval' => 90 } }))
+      write_config({ 'pipeline' => { 'max_parallel' => 4 } })
+      config = described_class.load(dir)
+      expect(config.max_parallel).to eq(4)
+      expect(config.poll_interval).to eq(90)
+    end
+  end
 end
