@@ -4,10 +4,14 @@ require 'open3'
 require 'shellwords'
 require_relative 'git_utils'
 require_relative 'command_runner'
+require_relative 'conflict_resolution'
+require_relative 'merge_verification'
 
 module Ocak
   class MergeManager
     include CommandRunner
+    include ConflictResolution
+    include MergeVerification
 
     def initialize(config:, claude:, logger:, issues:, watch: nil)
       @config = config
@@ -128,98 +132,6 @@ module Ocak
         message: "chore: uncommitted pipeline changes for issue ##{issue_number}",
         logger: @logger
       )
-    end
-
-    def rebase_onto_main(worktree)
-      fetch_result = run_git('fetch', 'origin', 'main', chdir: worktree.path)
-      unless fetch_result.success?
-        @logger.error("git fetch origin main failed: #{fetch_result.error}")
-        return false
-      end
-
-      rebase_result = run_git('rebase', 'origin/main', chdir: worktree.path)
-
-      return true if rebase_result.success?
-
-      @logger.warn("Rebase conflict, aborting rebase: #{rebase_result.error}")
-      abort_result = run_git('rebase', '--abort', chdir: worktree.path)
-      @logger.warn("git rebase --abort failed: #{abort_result.error}") unless abort_result.success?
-
-      # Fall back to merge strategy
-      @logger.info('Attempting merge strategy instead...')
-      merge_result = run_git('merge', 'origin/main', '--no-edit', chdir: worktree.path)
-
-      return true if merge_result.success?
-
-      # Merge also has conflicts — try to resolve via agent
-      @logger.warn("Merge conflict, attempting agent resolution: #{merge_result.error}")
-      resolve_conflicts_via_agent(worktree)
-    end
-
-    def resolve_conflicts_via_agent(worktree)
-      # Get list of conflicting files
-      diff_result = run_git('diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
-      conflicting = diff_result.stdout.lines.map(&:strip).reject(&:empty?)
-
-      if conflicting.empty?
-        @logger.warn('No conflicting files found, aborting merge')
-        run_git('merge', '--abort', chdir: worktree.path)
-        return false
-      end
-
-      result = @claude.run_agent(
-        'implementer',
-        "Resolve these merge conflicts.\n\n<conflicting_files>\n#{conflicting.join("\n")}\n</conflicting_files>\n\n" \
-        'Open each file, find conflict markers (<<<<<<< ======= >>>>>>>), and resolve them. ' \
-        'Then run `git add` on each resolved file.',
-        chdir: worktree.path
-      )
-
-      if result.success?
-        # Check if all conflicts resolved
-        remaining_result = run_git('diff', '--name-only', '--diff-filter=U', chdir: worktree.path)
-        if remaining_result.output.empty?
-          commit_result = run_git('commit', '--no-edit', chdir: worktree.path)
-          unless commit_result.success?
-            @logger.error("Commit after conflict resolution failed: #{commit_result.error}")
-            return false
-          end
-          @logger.info('Merge conflicts resolved by agent')
-          return true
-        end
-      end
-
-      @logger.error('Agent could not resolve merge conflicts')
-      run_git('merge', '--abort', chdir: worktree.path)
-      false
-    end
-
-    def verify_tests(worktree)
-      test_cmd = @config.test_command
-      return true unless test_cmd
-
-      @logger.info('Running tests after rebase...')
-      stdout, stderr, status = shell(test_cmd, chdir: worktree.path)
-
-      if status.success?
-        @logger.info('Tests passed after rebase')
-        true
-      else
-        @logger.warn('Tests failed after rebase')
-        @logger.debug("Test output:\n#{stdout[0..2000]}\n#{stderr[0..500]}")
-        false
-      end
-    end
-
-    def push_branch(worktree)
-      result = run_git('push', '-u', 'origin', worktree.branch, chdir: worktree.path)
-
-      unless result.success?
-        @logger.error("Push failed: #{result.error}")
-        return false
-      end
-
-      true
     end
 
     def shell(cmd, chdir:)
