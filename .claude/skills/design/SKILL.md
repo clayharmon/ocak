@@ -1,7 +1,7 @@
 ---
 name: design
 description: Interactive issue design — researches the codebase and produces implementation-ready GitHub issues
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 # /design — Issue Design Skill

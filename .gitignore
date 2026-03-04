@@ -21,3 +21,6 @@ logs/pipeline/
 .ocak/logs/
 .ocak/reports/
 .ocak/issues/
+
+# Ocak / Claude Code
+.ocak/trusted

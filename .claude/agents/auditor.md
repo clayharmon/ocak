@@ -82,7 +82,7 @@ For each changed file, check:
 
 | Changed File | Test File | Methods Tested | Missing Coverage |
 |-------------|-----------|---------------|-----------------|
-| `path/to/file` | `path/to/file_spec` | 4/5 | `edge_case_method` |
+| `path/to/file` | `path/to/file_test` | 4/5 | `edge_case_method` |
 | `path/to/other` | ❌ None | 0/3 | All methods |
 
 ### Verdict
