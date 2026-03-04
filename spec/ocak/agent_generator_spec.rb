@@ -155,6 +155,22 @@ RSpec.describe Ocak::AgentGenerator do
       end
     end
 
+    describe '#build_enhancement_prompt' do
+      it 'wraps context in project_context XML tags and template in base_template XML tags' do
+        context = 'some project context'
+        template = "---\nname: implementer\n---\n# Agent"
+
+        result = ai_generator.send(:build_enhancement_prompt, template, context)
+
+        expect(result).to include('<project_context>')
+        expect(result).to include('</project_context>')
+        expect(result).to include('<base_template>')
+        expect(result).to include('</base_template>')
+        expect(result).to include(context.to_s)
+        expect(result).to include(template.to_s)
+      end
+    end
+
     describe '#run_claude_prompt' do
       it 'returns stdout on success' do
         allow(Open3).to receive(:capture3).with(

@@ -137,10 +137,14 @@ module Ocak
         You are customizing a Claude Code agent for a specific project.
 
         Here is the project context:
+        <project_context>
         #{context}
+        </project_context>
 
         Here is the base agent template:
+        <base_template>
         #{template_content}
+        </base_template>
 
         Customize this agent to reference this project's actual conventions, file paths,
         and patterns. Keep the same structure (YAML frontmatter + markdown). Keep the same
