@@ -87,6 +87,11 @@ All externally-sourced content embedded in agent prompts must be wrapped in XML 
 - `ProcessRegistry` is a thread-safe PID set (`Mutex` + `Set`). `ProcessRunner#run` registers PIDs after `popen3` spawn and unregisters in `ensure`. `ClaudeRunner` passes the registry through to `ProcessRunner`.
 - `PipelineExecutor` accepts a `shutdown_check:` callable and checks it between steps; if true, it sets `state[:interrupted]` and breaks out of the step loop without deleting `PipelineState`.
 
+### Trust Model
+`ocak.yml` commands (`test_command`, `lint_command`, `format_command`, `setup_command`, `security_commands`) execute with the privileges of the user running `ocak`. Treat `ocak.yml` like executable code — review it before running `ocak run` in a repo you didn't create.
+
+On first run, if any commands are configured and no `.ocak/trusted` marker file exists, `PipelineRunner` prints a one-time warning to stderr and creates `.ocak/trusted` to suppress future warnings. The `.ocak/trusted` file is gitignored so each user sees the warning the first time they run the pipeline in a new repo clone.
+
 ## Multi-Repo Mode
 
 In multi-repo mode a "god repo" holds all the issues while agents run in separate target repos. This lets one Ocak instance manage work across many codebases.

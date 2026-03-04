@@ -65,6 +65,10 @@ module Ocak
       dig(:stack, :security_commands) || []
     end
 
+    def custom_commands?
+      !!(test_command || lint_command || format_command || setup_command || security_commands.any?)
+    end
+
     # Pipeline
     def max_parallel  = @overrides[:max_parallel] || dig(:pipeline, :max_parallel) || 5
     def poll_interval = @overrides[:poll_interval] || dig(:pipeline, :poll_interval) || 60

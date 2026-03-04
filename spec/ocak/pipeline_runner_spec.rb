@@ -33,7 +33,8 @@ RSpec.describe Ocak::PipelineRunner do
                       { 'agent' => 'reviewer', 'role' => 'review' },
                       { 'agent' => 'implementer', 'role' => 'fix', 'condition' => 'has_findings' }
                     ],
-                    multi_repo?: false)
+                    multi_repo?: false,
+                    custom_commands?: false)
   end
 
   let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, debug: nil, log_file_path: nil) }
@@ -1202,6 +1203,95 @@ RSpec.describe Ocak::PipelineRunner do
       runner = described_class.new(config: config, options: {})
 
       expect(runner.registry).to be_a(Ocak::ProcessRegistry)
+    end
+  end
+
+  describe 'trust model warning' do
+    let(:trusted_path) { '/project/.ocak/trusted' }
+
+    let(:config_with_commands) do
+      instance_double(Ocak::Config,
+                      project_dir: '/project',
+                      label_ready: 'auto-ready',
+                      label_in_progress: 'in-progress',
+                      label_completed: 'completed',
+                      label_failed: 'pipeline-failed',
+                      label_reready: 'auto-reready',
+                      label_awaiting_review: 'auto-pending-human',
+                      manual_review: false,
+                      audit_mode: false,
+                      log_dir: 'logs/pipeline',
+                      poll_interval: 1,
+                      max_parallel: 2,
+                      max_issues_per_run: 5,
+                      cost_budget: nil,
+                      worktree_dir: '.claude/worktrees',
+                      test_command: nil,
+                      lint_command: nil,
+                      lint_check_command: nil,
+                      setup_command: nil,
+                      language: 'ruby',
+                      issue_backend: 'github',
+                      all_labels: %w[auto-ready in-progress completed pipeline-failed auto-reready auto-pending-human],
+                      steps: [
+                        { 'agent' => 'implementer', 'role' => 'implement' },
+                        { 'agent' => 'merger', 'role' => 'merge' }
+                      ],
+                      multi_repo?: false,
+                      custom_commands?: true)
+    end
+
+    before do
+      allow(FileUtils).to receive(:touch)
+    end
+
+    it 'prints warning to stderr when commands configured and trusted file missing' do
+      allow(File).to receive(:exist?).and_call_original
+      allow(File).to receive(:exist?).with(trusted_path).and_return(false)
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(issues).to receive(:transition)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      runner = described_class.new(config: config_with_commands, options: { single: 1 })
+
+      expect { runner.run }.to output(/Warning: ocak\.yml contains commands that will be executed/).to_stderr
+    end
+
+    it 'creates .ocak/trusted after printing warning' do
+      allow(File).to receive(:exist?).and_call_original
+      allow(File).to receive(:exist?).with(trusted_path).and_return(false)
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(issues).to receive(:transition)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      runner = described_class.new(config: config_with_commands, options: { single: 1 })
+      runner.run
+
+      expect(FileUtils).to have_received(:touch).with(trusted_path)
+    end
+
+    it 'suppresses warning when .ocak/trusted exists' do
+      allow(File).to receive(:exist?).and_call_original
+      allow(File).to receive(:exist?).with(trusted_path).and_return(true)
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(issues).to receive(:transition)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      runner = described_class.new(config: config_with_commands, options: { single: 1 })
+
+      expect { runner.run }.not_to output(/Warning/).to_stderr
+    end
+
+    it 'suppresses warning when no custom commands are configured' do
+      allow(File).to receive(:exist?).and_call_original
+      allow(File).to receive(:exist?).with(trusted_path).and_return(false)
+      allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
+      allow(issues).to receive(:transition)
+      allow(claude).to receive(:run_agent).and_return(success_result)
+
+      runner = described_class.new(config: config, options: { single: 1 })
+
+      expect { runner.run }.not_to output(/Warning/).to_stderr
     end
   end
 end
