@@ -1,6 +1,6 @@
 # Ocak
 
-*Ocak (pronounced "oh-JAHK") is Turkish for "forge" or "hearth" — the place where raw material meets fire and becomes something useful. Also: let 'em cook.*
+*Ocak (pronounced "oh-JAHK") is Turkish for "forge" or "hearth" - the place where raw material meets fire and becomes something useful. Also: let 'em cook.*
 
 Multi-agent pipeline that processes GitHub issues autonomously with Claude Code. You write an issue, label it, and ocak runs it through implement → review → fix → security review → document → audit → merge. Each issue gets its own worktree so they can run in parrallel.
 
@@ -83,8 +83,8 @@ stateDiagram-v2
 ### Complexity Classification
 
 The planner classifes each issue as `simple` or `full`:
-- **Simple** — skips security review, second fix pass, documenter, and auditor
-- **Full** — runs the whole thing
+- **Simple** - skips security review, second fix pass, documenter, and auditor
+- **Full** - runs the whole thing
 
 `--fast` forces all issues to `simple`, giving you: implement → review → fix (if needed) → verify (if fixed) → merge.
 
@@ -102,7 +102,7 @@ flowchart LR
     E --> F["Merger agent<br>create PR + merge"]
 ```
 
-Merging is sequential — one at a time — so you dont get conflicts between parallel worktrees.
+Merging is sequential - one at a time - so you dont get conflicts between parallel worktrees.
 
 ## Agents
 
@@ -119,7 +119,7 @@ Merging is sequential — one at a time — so you dont get conflicts between pa
 | **planner** | Batch issues, classify complexity | Read, Glob, Grep, Bash (read-only) | haiku |
 | **pipeline** | Self-contained single-agent mode | All tools | opus |
 
-Review agents (reviewer, security-reviewer, auditor) have no Write/Edit access — they can only read and report stuff back.
+Review agents (reviewer, security-reviewer, auditor) have no Write/Edit access - they can only read and report stuff back.
 
 ## Skills
 
@@ -128,13 +128,13 @@ Interactive skills for use inside Claude Code:
 | Skill | Description |
 |-------|-------------|
 | `/design [description]` | Researches your codebase, asks clarifying questions, produces a detailed implementation-ready issue |
-| `/audit [scope]` | Codebase sweep — scopes: `security`, `errors`, `patterns`, `tests`, `data`, `dependencies`, or `all` |
+| `/audit [scope]` | Codebase sweep - scopes: `security`, `errors`, `patterns`, `tests`, `data`, `dependencies`, or `all` |
 | `/scan-file <path>` | Deep single-file analysis with test coverage check, scored 1-10 per method |
 | `/debt` | Tech debt tracker with risk scoring (churn, coverage, suppressions, age, blast radius) |
 
 ## Modes
 
-### Full Pipeline — `ocak run`
+### Full Pipeline - `ocak run`
 
 The default. Polls for `auto-ready` issues, plans batches, runs the full step sequence in parallel worktrees, merges sequentally.
 
@@ -146,7 +146,7 @@ ocak run --audit --watch         # Auditor as merge gate
 ocak run --fast --watch          # Skip security/docs/audit steps
 ```
 
-### Fast Mode — `ocak hiz`
+### Fast Mode - `ocak hiz`
 
 Lightweight alternative for quick PRs you'll review youself:
 
@@ -186,11 +186,41 @@ ocak run 1 --watch
 
 Issues live in `.ocak/issues/0001.md`, `.ocak/issues/0002.md`, etc. Labels, complexity, and pipeline comments are all tracked in the file. Merging goes straight to main (no PRs) via `LocalMergeManager`.
 
+### Multi-Repo Mode
+
+Run issues across multiple repos from a single issue tracker. One "god repo" holds all the issues, agents run in worktrees of whatever repo the issue targets.
+
+Each issue specifies its target with YAML front-matter at the top of the body:
+
+```
+---
+target_repo: my-service
+---
+
+Actual issue description here...
+```
+
+Enable it in `ocak.yml`:
+
+```yaml
+multi_repo: true
+```
+
+Map repo names to local paths in `~/.config/ocak/config.yml`:
+
+```yaml
+repos:
+  my-service: ~/dev/my-service
+  other-thing: ~/dev/other-thing
+```
+
+Labels and comments stay on the god repo's issues. PRs get created in the target repo. Worktree isolation, parallel batches, sequential merging all work the same.
+
 ### Graceful Shutdown
 
-`Ctrl+C` once — current agent step finishes, then the pipeline stops. WIP gets committed, labels reset to `auto-ready`, and resume commands are printed.
+`Ctrl+C` once - current agent step finishes, then the pipeline stops. WIP gets committed, labels reset to `auto-ready`, and resume commands are printed.
 
-`Ctrl+C` twice — kills active subprocesses immediatley (SIGTERM → wait → SIGKILL), then same cleanup runs.
+`Ctrl+C` twice - kills active subprocesses immediatley (SIGTERM → wait → SIGKILL), then same cleanup runs.
 
 ```bash
 ocak resume 42 --watch  # Pick up from where it stopped
@@ -214,7 +244,7 @@ stack:
 
 # Issue backend (omit for GitHub, or set to "local" for offline mode)
 issues:
-  backend: github          # or "local" — auto-detected if .ocak/issues/ exists
+  backend: github          # or "local" - auto-detected if .ocak/issues/ exists
 
 # Pipeline settings
 pipeline:
@@ -241,7 +271,7 @@ labels:
   reready: "auto-reready"
   awaiting_review: "auto-pending-human"
 
-# Pipeline steps — add, remove, reorder as you like
+# Pipeline steps - add, remove, reorder as you like
 steps:
   - agent: implementer
     role: implement
@@ -275,6 +305,25 @@ agents:
   reviewer: .claude/agents/reviewer.md
   # ...
 ```
+
+### User Config
+
+`ocak init` scaffolds `~/.config/ocak/config.yml` (or `$XDG_CONFIG_HOME/ocak/config.yml`) for machine-specific settings. When both files exist, project `ocak.yml` wins on conflicts.
+
+```yaml
+# ~/.config/ocak/config.yml
+
+# Repo path mappings for multi-repo mode
+repos:
+  my-service: ~/dev/my-service
+
+# Machine-level overrides
+pipeline:
+  max_parallel: 3
+  cost_budget: 10.00
+```
+
+The `repos:` key only comes from user config so repo paths dont leak into project config.
 
 ## Customization
 
@@ -351,8 +400,8 @@ steps:
 | Python | Django, Flask, FastAPI | pytest | ruff, flake8 | bandit, safety |
 | Rust | Actix, Axum, Rocket | cargo test | cargo clippy | cargo audit |
 | Go | Gin, Echo, Fiber, Chi | go test | golangci-lint | gosec |
-| Java | — | gradle test | — | — |
-| Elixir | Phoenix | mix test | mix credo | — |
+| Java | - | gradle test | - | - |
+| Elixir | Phoenix | mix test | mix credo | - |
 
 Monorepo detection: npm/pnpm workspaces, Cargo workspaces, Go workspaces, Lerna, and convention-based (`packages/`, `apps/`, `services/`).
 
@@ -368,15 +417,15 @@ Shows per-run stats (cost, duration, steps completed, failures) and aggregates a
 
 ## Writing Good Issues
 
-The `/design` skill produces issues formatted for zero-context agents. Think of it as writing a ticket for a contractor who's never seen your codebase — everthing they need should be in the issue body. The key sections:
+The `/design` skill produces issues formatted for zero-context agents. Think of it as writing a ticket for a contractor who's never seen your codebase - everthing they need should be in the issue body. The key sections:
 
-- **Context** — what part of the system, with specific file paths
-- **Acceptance Criteria** — "when X, then Y" format, each independantly testable
-- **Implementation Guide** — exact files to create/modify
-- **Patterns to Follow** — references to actual files in the codebase
-- **Security Considerations** — auth, validation, data exposure
-- **Test Requirements** — specific test cases with file paths
-- **Out of Scope** — explicit boundaries so it doesnt scope creep
+- **Context** - what part of the system, with specific file paths
+- **Acceptance Criteria** - "when X, then Y" format, each independantly testable
+- **Implementation Guide** - exact files to create/modify
+- **Patterns to Follow** - references to actual files in the codebase
+- **Security Considerations** - auth, validation, data exposure
+- **Test Requirements** - specific test cases with file paths
+- **Out of Scope** - explicit boundaries so it doesnt scope creep
 
 ## CLI Reference
 
@@ -439,6 +488,10 @@ Depends on the issue. Simple stuff is $2-5, complex issues can be $10-15. The im
 **Is it safe?**
 
 Reasonably. Review agents are read-only (no Write/Edit tools), merging is sequential so you dont get conflicts, and failed piplines get labeled and logged. You can always `--dry-run` first to see what it would do.
+
+**Can I trust `ocak.yml` from someone else's repo?**
+
+Treat it like a Makefile. Commands in `test_command`, `lint_command`, `security_commands`, etc. run with your user privileges. First time you run ocak in a new repo it'll print a warning. Review the commands before running `ocak run` on repos you didnt write.
 
 **What if it breaks?**
 
