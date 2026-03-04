@@ -21,7 +21,7 @@ module Ocak
 
         FileUtils.mkdir_p(@worktree_base)
 
-        branch = "auto/issue-#{issue_number}-#{SecureRandom.hex(4)}"
+        branch = "auto-issue-#{issue_number}-#{SecureRandom.hex(4)}"
         path = File.join(@worktree_base, "issue-#{issue_number}")
 
         _, stderr, status = git('worktree', 'add', '-b', branch, path, 'main')
