@@ -23,24 +23,32 @@ module Ocak
     end
 
     def handle_single_success(issue_number, result, logger:, claude:, issues:)
+      target_dir = result[:target_repo]&.dig(:path) || @config.project_dir
+
       if result[:audit_blocked]
-        handle_single_audit_blocked(issue_number, result, logger: logger, claude: claude, issues: issues)
+        handle_single_audit_blocked(issue_number, result, logger: logger, claude: claude, issues: issues,
+                                                          chdir: target_dir)
       elsif @config.manual_review
-        handle_single_manual_review(issue_number, logger: logger, claude: claude, issues: issues)
+        handle_single_manual_review(issue_number, logger: logger, claude: claude, issues: issues, chdir: target_dir)
       else
         unless pipeline_has_merge_step?
-          claude.run_agent('merger', "Create a PR, merge it, and close issue ##{issue_number}",
-                           chdir: @config.project_dir)
+          prompt = if result[:target_repo]
+                     "Create a PR and merge it for issue ##{issue_number}. " \
+                       'Do NOT close any issues (the issue lives in a different repository).'
+                   else
+                     "Create a PR, merge it, and close issue ##{issue_number}"
+                   end
+          claude.run_agent('merger', prompt, chdir: target_dir)
         end
         issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_completed)
         logger.info("Issue ##{issue_number} completed successfully")
       end
     end
 
-    def handle_single_manual_review(issue_number, logger:, claude:, issues:)
+    def handle_single_manual_review(issue_number, logger:, claude:, issues:, chdir: @config.project_dir)
       claude.run_agent('merger',
                        "Create a PR for issue ##{issue_number} but do NOT merge it and do NOT close the issue",
-                       chdir: @config.project_dir)
+                       chdir: chdir)
       issues.transition(issue_number, from: @config.label_in_progress, to: @config.label_awaiting_review)
       logger.info("Issue ##{issue_number} PR created (manual review mode)")
     end
@@ -57,9 +65,9 @@ module Ocak
       end
     end
 
-    def handle_single_audit_blocked(issue_number, result, logger:, claude:, issues:)
-      handle_single_manual_review(issue_number, logger: logger, claude: claude, issues: issues)
-      post_audit_comment_single(result[:audit_output], logger: logger, issues: issues)
+    def handle_single_audit_blocked(issue_number, result, logger:, claude:, issues:, chdir: @config.project_dir)
+      handle_single_manual_review(issue_number, logger: logger, claude: claude, issues: issues, chdir: chdir)
+      post_audit_comment_single(result[:audit_output], logger: logger, issues: issues, chdir: chdir)
     end
 
     def handle_batch_audit(result, merger:, issues:, logger:)
@@ -79,8 +87,8 @@ module Ocak
       end
     end
 
-    def post_audit_comment_single(audit_output, logger:, issues:)
-      pr_number = find_pr_for_branch(logger: logger)
+    def post_audit_comment_single(audit_output, logger:, issues:, chdir: @config.project_dir)
+      pr_number = find_pr_for_branch(logger: logger, chdir: chdir)
       unless pr_number
         logger.warn("Could not find PR to post audit comment — findings were: #{audit_output.to_s[0..200]}")
         return
@@ -94,8 +102,8 @@ module Ocak
       @config.steps.any? { |s| s[:role].to_s == 'merge' || s['role'].to_s == 'merge' }
     end
 
-    def find_pr_for_branch(logger:)
-      stdout, _, status = Open3.capture3('gh', 'pr', 'view', '--json', 'number', chdir: @config.project_dir)
+    def find_pr_for_branch(logger:, chdir: @config.project_dir)
+      stdout, _, status = Open3.capture3('gh', 'pr', 'view', '--json', 'number', chdir: chdir)
       return nil unless status.success?
 
       data = JSON.parse(stdout)
