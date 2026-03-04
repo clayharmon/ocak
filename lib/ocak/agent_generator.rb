@@ -4,9 +4,12 @@ require 'erb'
 require 'fileutils'
 require 'open3'
 require_relative 'claude_runner'
+require_relative 'command_runner'
 
 module Ocak
   class AgentGenerator
+    include CommandRunner
+
     AGENT_TEMPLATES = %w[
       implementer reviewer security_reviewer documenter
       merger pipeline planner auditor
@@ -155,15 +158,13 @@ module Ocak
     end
 
     def claude_available?
-      _, _, status = Open3.capture3('which', 'claude')
-      status.success?
-    rescue Errno::ENOENT => e
-      @logger&.warn("Claude CLI not found: #{e.message}")
-      false
+      result = run_command('which', 'claude')
+      @logger&.warn("Claude CLI not found: #{result.error}") if result.status.nil?
+      result.success?
     end
 
     def run_claude_prompt(prompt)
-      stdout, _, status = Open3.capture3(
+      result = run_command(
         'claude', '-p',
         '--output-format', 'text',
         '--model', ClaudeRunner::MODEL_HAIKU,
@@ -171,10 +172,11 @@ module Ocak
         '--', prompt,
         chdir: @project_dir
       )
-      status.success? ? stdout : nil
-    rescue Errno::ENOENT => e
-      @logger&.warn("Failed to run Claude prompt: #{e.message}")
-      nil
+      if result.status.nil?
+        @logger&.warn("Failed to run Claude prompt: #{result.error}")
+        return nil
+      end
+      result.success? ? result.stdout : nil
     end
   end
 end
