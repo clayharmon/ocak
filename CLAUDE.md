@@ -8,7 +8,7 @@ A Ruby gem that sets up and runs a multi-agent pipeline for autonomous GitHub is
 lib/ocak/
 ├── cli.rb                 # dry-cli registry, maps subcommands to command classes
 ├── commands/              # One class per CLI subcommand (init, run, resume, hiz, design, audit, debt, status, clean)
-├── config.rb              # Loads and validates ocak.yml, provides typed accessors
+├── config.rb              # Loads and validates ocak.yml + user config (~/.config/ocak/config.yml), deep-merges them, provides typed accessors
 ├── stack_detector.rb      # Detects project language, framework, test/lint/security tools via data-driven rules
 ├── monorepo_detector.rb   # MonorepoDetector module (included by StackDetector) — npm/pnpm/cargo/go workspace detection
 ├── agent_generator.rb     # Generates agent/skill/hook files from ERB templates, optionally enhanced via claude -p
@@ -53,7 +53,7 @@ lib/ocak/templates/
 - **dry-cli** for CLI routing — each command is a class inheriting `Dry::CLI::Command`
 - **No heavy dependencies** — stdlib only (open3, json, yaml, erb, fileutils, logger, securerandom) plus dry-cli
 - **ERB templates** use `trim_mode: "-"` for clean output
-- **Config** is always loaded from `ocak.yml` in the project root via `Config.load`
+- **Config** is always loaded via `Config.load`: deep-merges user config (`~/.config/ocak/config.yml` or `$XDG_CONFIG_HOME/ocak/config.yml`) under project `ocak.yml`, with project values winning on conflicts. `repos:` is always sourced from user config only (never from project `ocak.yml`).
 - Agent names use hyphens in filenames (`security-reviewer.md`) and in `ocak.yml` step definitions (`security-reviewer`); Ruby identifiers use underscores. `pipeline_executor.rb` converts underscores to hyphens for backwards compatibility with existing user configs.
 - All external commands (git, gh, claude) go through `Open3.capture3` or `Open3.popen3`
 
@@ -76,6 +76,9 @@ Both `pipeline_executor.rb` and `hiz.rb` post GitHub comments at pipeline start,
 
 ### Prompt Injection Protection
 All externally-sourced content embedded in agent prompts must be wrapped in XML delimiter tags. This prevents malicious content (e.g., a PR comment saying "IGNORE PREVIOUS INSTRUCTIONS...") from being interpreted as instructions by the agent. Examples: `<issue_body>`, `<issue_data>`, `<review_output>`, `<review_comments>`, `<pr_comments>`. See `planner.rb#build_step_prompt`, `planner.rb#plan_batches`, and `reready_processor.rb#build_feedback_prompt`.
+
+### User-Level Config
+`Config.load` merges two config sources: a machine-specific user config at `~/.config/ocak/config.yml` (or `$XDG_CONFIG_HOME/ocak/config.yml`) and the project's `ocak.yml`. The merge uses `deep_merge(user_data, project_data)` so project values override user values on conflicts. The `repos:` key is an exception — it is always taken from user config only, preventing repo path mappings from being committed to a project repo. If the user config does not exist, `Config.load` behaves identically to before. Invalid YAML or a non-hash user config raises `ConfigError` with the file path. `ocak init` scaffolds `~/.config/ocak/config.yml` with commented-out examples on first run; subsequent runs skip it (no overwrite).
 
 ### Two-Tiered Shutdown
 `PipelineRunner` implements two-tiered signal handling via `shutdown!`:
