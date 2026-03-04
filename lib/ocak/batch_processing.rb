@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'target_resolver'
+
 module Ocak
   # Batch processing logic — process_issues, run_batch, process_one_issue, build_issue_result.
   # Extracted from PipelineRunner to reduce file size.
@@ -11,6 +13,8 @@ module Ocak
         logger.warn("Capping to #{@config.max_issues_per_run} issues (found #{ready_issues.size})")
         ready_issues = ready_issues.first(@config.max_issues_per_run)
       end
+
+      ready_issues = resolve_targets(ready_issues, logger: logger) if @config.multi_repo?
 
       claude = build_claude(logger)
       batches = @executor.plan_batches(ready_issues, logger: logger, claude: claude)
@@ -29,10 +33,10 @@ module Ocak
     end
 
     def run_batch(batch_issues, logger:, issues:)
-      worktrees = WorktreeManager.new(config: @config, logger: logger)
+      shared_worktrees = @config.multi_repo? ? nil : WorktreeManager.new(config: @config, logger: logger)
 
       threads = batch_issues.map do |issue|
-        Thread.new { process_one_issue(issue, worktrees: worktrees, issues: issues) }
+        Thread.new { process_one_issue(issue, worktrees: shared_worktrees, issues: issues) }
       end
       results = threads.map(&:value)
 
@@ -47,7 +51,8 @@ module Ocak
         next unless result[:worktree]
         next if result[:interrupted]
 
-        worktrees.remove(result[:worktree])
+        worktree_manager_for(result[:worktree], shared: shared_worktrees, logger: logger)
+          .remove(result[:worktree])
       rescue StandardError => e
         logger.warn("Failed to clean worktree for ##{result[:issue_number]}: #{e.message}")
       end
@@ -66,7 +71,14 @@ module Ocak
         @active_issues << issue_number
       end
       issues.transition(issue_number, from: @config.label_ready, to: @config.label_in_progress)
-      worktree = worktrees.create(issue_number, setup_command: @config.setup_command)
+
+      target = issue['_target']
+      worktree_mgr = if target
+                       WorktreeManager.new(config: @config, repo_dir: target[:path], logger: logger)
+                     else
+                       worktrees
+                     end
+      worktree = worktree_mgr.create(issue_number, setup_command: @config.setup_command)
       logger.info("Created worktree at #{worktree.path} (branch: #{worktree.branch})")
 
       complexity = @options[:fast] ? 'simple' : issue.fetch('complexity', 'full')
@@ -96,6 +108,24 @@ module Ocak
       else
         report_pipeline_failure(issue_number, result, issues: issues, config: @config, logger: logger)
         { issue_number: issue_number, success: false, worktree: worktree }
+      end
+    end
+
+    def worktree_manager_for(worktree, shared:, logger:)
+      target = worktree.target_repo
+      return WorktreeManager.new(config: @config, repo_dir: target[:path], logger: logger) if target
+
+      shared || WorktreeManager.new(config: @config, logger: logger)
+    end
+
+    def resolve_targets(ready_issues, logger:)
+      ready_issues.filter_map do |issue|
+        target = TargetResolver.resolve(issue, config: @config)
+        issue['_target'] = target
+        issue
+      rescue TargetResolver::TargetResolutionError => e
+        logger.error("Skipping issue ##{issue['number']}: #{e.message}")
+        nil
       end
     end
   end

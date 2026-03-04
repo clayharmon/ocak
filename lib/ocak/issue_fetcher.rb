@@ -135,11 +135,12 @@ module Ocak
     end
 
     def repo_nwo
-      stdout, _, status = run_gh('repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner')
-      return nil unless status.success?
+      return @repo_nwo if defined?(@repo_nwo_resolved)
 
-      nwo = stdout.strip
-      nwo.empty? ? nil : nwo
+      stdout, _, status = run_gh('repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner')
+      @repo_nwo = status.success? ? stdout.strip : nil
+      @repo_nwo_resolved = true
+      @repo_nwo
     end
 
     private

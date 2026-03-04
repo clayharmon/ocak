@@ -7,14 +7,15 @@ require 'shellwords'
 
 module Ocak
   class WorktreeManager
-    def initialize(config:, logger: nil)
+    def initialize(config:, repo_dir: nil, logger: nil)
       @config = config
       @logger = logger
-      @worktree_base = File.join(config.project_dir, config.worktree_dir)
+      @repo_dir = repo_dir || config.project_dir
+      @worktree_base = File.join(@repo_dir, config.worktree_dir)
       @mutex = Mutex.new
     end
 
-    def create(issue_number, setup_command: nil)
+    def create(issue_number, setup_command: nil, target_repo: nil)
       @mutex.synchronize do
         raise ArgumentError, "Invalid issue number: #{issue_number}" unless issue_number.to_s.match?(/\A\d+\z/)
 
@@ -31,7 +32,7 @@ module Ocak
           raise WorktreeError, "Setup command failed: #{stderr}" unless status.success?
         end
 
-        Worktree.new(path: path, branch: branch, issue_number: issue_number)
+        Worktree.new(path: path, branch: branch, issue_number: issue_number, target_repo: target_repo)
       end
     end
 
@@ -75,7 +76,7 @@ module Ocak
     private
 
     def git(*)
-      Open3.capture3('git', *, chdir: @config.project_dir)
+      Open3.capture3('git', *, chdir: @repo_dir)
     end
 
     def parse_worktree_list(output)
