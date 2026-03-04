@@ -13,7 +13,7 @@ lib/ocak/
 ├── monorepo_detector.rb   # MonorepoDetector module (included by StackDetector) — npm/pnpm/cargo/go workspace detection
 ├── agent_generator.rb     # Generates agent/skill/hook files from ERB templates, optionally enhanced via claude -p
 ├── pipeline_runner.rb     # Orchestration: poll → plan → worktree → delegate to executor → merge
-├── batch_processing.rb    # BatchProcessing module (included by PipelineRunner) — process_issues, run_batch, process_one_issue, build_issue_result
+├── batch_processing.rb    # BatchProcessing module (included by PipelineRunner) — process_issues, run_batch, process_one_issue, build_issue_result; resolves per-issue target repos in multi-repo mode
 ├── instance_builders.rb   # InstanceBuilders module (included by PipelineRunner) — factory methods for logger, claude, merge manager; setup helpers
 ├── shutdown_handling.rb   # ShutdownHandling module (included by PipelineRunner) — graceful/force shutdown, interrupt/error handling, summary
 ├── merge_orchestration.rb # MergeOrchestration module (included by PipelineRunner) — PR creation, audit blocking, manual review, label transitions
@@ -25,6 +25,7 @@ lib/ocak/
 ├── step_comments.rb       # StepComments module — shared post_step_comment / post_step_completion_comment; included by Hiz and PipelineExecutor
 ├── claude_runner.rb       # Wraps `claude -p` with stream-json parsing (StreamParser, AgentResult)
 ├── issue_fetcher.rb       # GitHub CLI wrapper for all issue data access — listing, labeling, commenting, label creation, view
+├── target_resolver.rb     # Resolves an issue's target repo from body frontmatter (`target_repo:`) via Config#resolve_repo; raises TargetResolutionError if name is unknown
 ├── worktree_manager.rb    # Git worktree create/remove/list/clean
 ├── merge_manager.rb       # Sequential rebase + test + push, then delegates to merger agent
 ├── git_utils.rb           # Shared git helpers — commit_changes (porcelain check → add -A → commit with exit-status checks), safe_branch_name? (validates branch names against flag injection and .. traversal)
