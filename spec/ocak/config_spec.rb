@@ -143,6 +143,43 @@ RSpec.describe Ocak::Config do
     end
   end
 
+  describe '#custom_commands?' do
+    it 'returns false when no commands are configured' do
+      config = described_class.new({}, dir)
+      expect(config.custom_commands?).to be false
+    end
+
+    it 'returns true when test_command is set' do
+      config = described_class.new({ stack: { test_command: 'bundle exec rspec' } }, dir)
+      expect(config.custom_commands?).to be true
+    end
+
+    it 'returns true when lint_command is set' do
+      config = described_class.new({ stack: { lint_command: 'bundle exec rubocop' } }, dir)
+      expect(config.custom_commands?).to be true
+    end
+
+    it 'returns true when format_command is set' do
+      config = described_class.new({ stack: { format_command: 'prettier --write .' } }, dir)
+      expect(config.custom_commands?).to be true
+    end
+
+    it 'returns true when setup_command is set' do
+      config = described_class.new({ stack: { setup_command: 'bundle install' } }, dir)
+      expect(config.custom_commands?).to be true
+    end
+
+    it 'returns true when security_commands is non-empty' do
+      config = described_class.new({ stack: { security_commands: ['bundle exec brakeman -q'] } }, dir)
+      expect(config.custom_commands?).to be true
+    end
+
+    it 'returns false when security_commands is empty' do
+      config = described_class.new({ stack: { security_commands: [] } }, dir)
+      expect(config.custom_commands?).to be false
+    end
+  end
+
   describe 'pipeline defaults' do
     subject(:config) { described_class.new({}, dir) }
 

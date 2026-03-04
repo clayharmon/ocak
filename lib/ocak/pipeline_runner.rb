@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'fileutils'
 require_relative 'batch_processing'
 require_relative 'failure_reporting'
 require_relative 'instance_builders'
@@ -36,6 +37,7 @@ module Ocak
     end
 
     def run
+      warn_if_untrusted
       @options[:single] ? run_single(@options[:single]) : run_loop
     end
 
@@ -51,6 +53,18 @@ module Ocak
     end
 
     private
+
+    def warn_if_untrusted
+      return unless @config.custom_commands?
+
+      trusted_path = File.join(@config.project_dir, '.ocak', 'trusted')
+      return if File.exist?(trusted_path)
+
+      warn 'Warning: ocak.yml contains commands that will be executed with your user privileges. ' \
+           'Review the config before proceeding.'
+      FileUtils.mkdir_p(File.dirname(trusted_path))
+      FileUtils.touch(trusted_path)
+    end
 
     def run_single(issue_number)
       logger = build_logger(issue_number: issue_number)
