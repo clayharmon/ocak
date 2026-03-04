@@ -22,7 +22,7 @@ module Ocak
     end
 
     def build_merge_manager(logger:, issues:)
-      if issues.is_a?(LocalIssueFetcher) && !gh_available?
+      if issues.is_a?(LocalIssueFetcher) && !@config.multi_repo? && !gh_available?
         LocalMergeManager.new(config: @config, logger: logger, issues: issues)
       else
         MergeManager.new(config: @config, claude: build_claude(logger), logger: logger,

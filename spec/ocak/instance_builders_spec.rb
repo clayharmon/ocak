@@ -121,6 +121,7 @@ RSpec.describe Ocak::InstanceBuilders do
 
     it 'builds LocalMergeManager when issues is LocalIssueFetcher and gh unavailable' do
       local_issues = Ocak::LocalIssueFetcher.new(config: config)
+      allow(config).to receive(:multi_repo?).and_return(false)
       allow(Open3).to receive(:capture3).and_return(['', '', instance_double(Process::Status, success?: false)])
 
       result = instance.build_merge_manager(logger: logger, issues: local_issues)
@@ -129,7 +130,17 @@ RSpec.describe Ocak::InstanceBuilders do
 
     it 'builds MergeManager when issues is LocalIssueFetcher but gh is available' do
       local_issues = Ocak::LocalIssueFetcher.new(config: config)
+      allow(config).to receive(:multi_repo?).and_return(false)
       allow(Open3).to receive(:capture3).and_return(['ok', '', instance_double(Process::Status, success?: true)])
+
+      result = instance.build_merge_manager(logger: logger, issues: local_issues)
+      expect(result).to eq(merge_manager)
+    end
+
+    it 'builds MergeManager when issues is LocalIssueFetcher and multi-repo mode even if gh unavailable' do
+      local_issues = Ocak::LocalIssueFetcher.new(config: config)
+      allow(config).to receive(:multi_repo?).and_return(true)
+      allow(Open3).to receive(:capture3).and_return(['', '', instance_double(Process::Status, success?: false)])
 
       result = instance.build_merge_manager(logger: logger, issues: local_issues)
       expect(result).to eq(merge_manager)
