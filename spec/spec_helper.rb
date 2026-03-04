@@ -18,6 +18,7 @@ require 'ocak/git_utils'
 require 'ocak/command_runner'
 require 'ocak/project_key'
 require 'ocak/reready_processor'
+require 'ocak/target_resolver'
 require 'ocak/logger'
 
 RSpec.configure do |config|
