@@ -27,7 +27,9 @@ lib/ocak/
 ├── issue_fetcher.rb       # GitHub CLI wrapper for all issue data access — listing, labeling, commenting, label creation, view
 ├── target_resolver.rb     # Resolves an issue's target repo from body frontmatter (`target_repo:`) via Config#resolve_repo; raises TargetResolutionError if name is unknown
 ├── worktree_manager.rb    # Git worktree create/remove/list/clean
-├── merge_manager.rb       # Sequential rebase + test + push, then delegates to merger agent
+├── merge_manager.rb       # Slim orchestrator: merge, create_pr_only; includes ConflictResolution and MergeVerification
+├── conflict_resolution.rb # ConflictResolution module (included by MergeManager) — rebase_onto_main, resolve_conflicts_via_agent
+├── merge_verification.rb  # MergeVerification module (included by MergeManager) — verify_tests, push_branch
 ├── git_utils.rb           # Shared git helpers — commit_changes (porcelain check → add -A → commit with exit-status checks), safe_branch_name? (validates branch names against flag injection and .. traversal)
 ├── command_runner.rb      # CommandRunner module — run_git/run_gh helpers with standardized error handling and stderr truncation (500 chars); included by classes needing git/gh commands
 ├── planner.rb             # Batch planning: groups issues for parallel/sequential execution
