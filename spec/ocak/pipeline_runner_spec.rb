@@ -230,6 +230,7 @@ RSpec.describe Ocak::PipelineRunner do
 
     before do
       allow(config).to receive(:steps).and_return(steps_with_complexity)
+      allow(config).to receive(:audit_mode).and_return(true)
       allow(Ocak::IssueFetcher).to receive(:new).and_return(issues)
       allow(issues).to receive(:transition)
       allow(claude).to receive(:run_agent).and_return(success_result)

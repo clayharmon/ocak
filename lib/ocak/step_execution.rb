@@ -51,14 +51,21 @@ module Ocak
     def skip_reason(step, state)
       condition = step[:condition]
 
-      return 'merge handled by MergeManager' if step[:role].to_s == 'merge' && @skip_merge
-      return 'audit found blocking issues' if step[:role].to_s == 'merge' && @config.audit_mode && state[:audit_blocked]
-      return 'manual review mode' if step[:role].to_s == 'merge' && @config.manual_review
+      return merge_skip_reason(state) if step[:role].to_s == 'merge'
+      return 'audit mode not enabled' if step[:role].to_s == 'audit' && !@config.audit_mode
       return 'fast-track issue (simple complexity)' if step[:complexity] == 'full' && state[:complexity] == 'simple'
       if condition == 'has_findings' && !state[:last_review_output]&.include?('🔴')
         return 'no blocking findings from review'
       end
       return 'no fixes were made' if condition == 'had_fixes' && !state[:had_fixes]
+
+      nil
+    end
+
+    def merge_skip_reason(state)
+      return 'merge handled by MergeManager' if @skip_merge
+      return 'audit found blocking issues' if @config.audit_mode && state[:audit_blocked]
+      return 'manual review mode' if @config.manual_review
 
       nil
     end

@@ -87,6 +87,24 @@ RSpec.describe Ocak::StepExecution do
       expect(instance.skip_reason(merge_step, base_state)).to eq('manual review mode')
     end
 
+    it 'returns audit mode not enabled reason when audit role and audit_mode is false' do
+      audit_step = { role: 'audit', agent: 'auditor', complexity: 'full' }
+      expect(instance.skip_reason(audit_step, base_state)).to eq('audit mode not enabled')
+    end
+
+    it 'returns nil for audit role when audit_mode is true' do
+      allow(config).to receive(:audit_mode).and_return(true)
+      audit_step = { role: 'audit', agent: 'auditor', complexity: 'full' }
+      expect(instance.skip_reason(audit_step, base_state)).to be_nil
+    end
+
+    it 'skips audit via complexity when audit_mode is true and complexity is simple' do
+      allow(config).to receive(:audit_mode).and_return(true)
+      audit_step = { role: 'audit', agent: 'auditor', complexity: 'full' }
+      state = base_state.merge(complexity: 'simple')
+      expect(instance.skip_reason(audit_step, state)).to eq('fast-track issue (simple complexity)')
+    end
+
     it 'returns complexity reason for full step on simple issue' do
       complex_step = { role: 'document', agent: 'documenter', complexity: 'full' }
       state = base_state.merge(complexity: 'simple')
