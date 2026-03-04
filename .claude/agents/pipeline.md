@@ -59,6 +59,7 @@ Review your changes for security concerns:
 - No secrets in code
 - Error messages don't leak internals
 
+
 Fix any security issues found.
 
 ### Phase 4: Document

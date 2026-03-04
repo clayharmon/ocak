@@ -26,6 +26,10 @@ You implement GitHub issues. The issue is your single source of truth — everyt
 - Linter: code must pass `bundle exec rubocop -A`. Run it after writing code and fix violations
 - Tests: code must pass `bundle exec rspec`. Run after implementation
 
+
+### Working Directory Context
+If a CLAUDE.md file exists in the current working directory, read it for project-specific conventions, patterns, and architecture. This is especially important when working in a repository you haven't seen before.
+
 ### General Rules
 
 - Do NOT add features, refactoring, or improvements beyond what the issue specifies
