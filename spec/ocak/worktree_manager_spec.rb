@@ -41,7 +41,7 @@ RSpec.describe Ocak::WorktreeManager do
 
       worktree = manager.create(42)
 
-      expect(worktree.branch).to match(%r{\Aauto/issue-42-[a-f0-9]{8}\z})
+      expect(worktree.branch).to match(/\Aauto-issue-42-[a-f0-9]{8}\z/)
       expect(worktree.path).to eq('/project/.claude/worktrees/issue-42')
       expect(worktree.issue_number).to eq(42)
     end

@@ -91,11 +91,11 @@ RSpec.describe Ocak::Commands::Hiz do
               chdir: '/project', model: 'sonnet')
     end
 
-    it 'creates a branch with hiz/ prefix' do
+    it 'creates a branch with hiz- prefix' do
       command.call(issue: '42')
 
       expect(Open3).to have_received(:capture3)
-        .with('git', 'checkout', '-b', match(%r{\Ahiz/issue-42-[0-9a-f]{8}\z}), chdir: '/project')
+        .with('git', 'checkout', '-b', match(/\Ahiz-issue-42-[0-9a-f]{8}\z/), chdir: '/project')
     end
 
     it 'creates a PR via gh with issue title' do
@@ -105,7 +105,7 @@ RSpec.describe Ocak::Commands::Hiz do
         .with('gh', 'pr', 'create',
               '--title', 'Fix #42: Add fast mode',
               '--body', match(/Closes #42/),
-              '--head', match(%r{\Ahiz/issue-42-}),
+              '--head', match(/\Ahiz-issue-42-/),
               chdir: '/project')
     end
 
@@ -147,7 +147,7 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(Open3).to have_received(:capture3)
-        .with('git', 'branch', '-D', match(%r{\Ahiz/issue-42-}), chdir: '/project')
+        .with('git', 'branch', '-D', match(/\Ahiz-issue-42-/), chdir: '/project')
     end
 
     it 'logs debug message when failure comment posting fails' do
@@ -295,7 +295,7 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(Open3).to have_received(:capture3)
-        .with('git', 'branch', '-D', match(%r{\Ahiz/issue-42-}), chdir: '/project')
+        .with('git', 'branch', '-D', match(/\Ahiz-issue-42-/), chdir: '/project')
     end
   end
 
@@ -737,7 +737,7 @@ RSpec.describe Ocak::Commands::Hiz do
         .with(42, match(/failed at phase: create-branch/))
     end
 
-    it 'generates branch names matching hiz/issue-<N>-<hex8> format' do
+    it 'generates branch names matching hiz-issue-<N>-<hex8> format' do
       allow(claude).to receive(:run_agent).and_return(success_result)
       allow(issues).to receive(:view).with(42).and_return(nil)
       allow(Open3).to receive(:capture3)
@@ -748,7 +748,7 @@ RSpec.describe Ocak::Commands::Hiz do
       command.call(issue: '42')
 
       expect(Open3).to have_received(:capture3)
-        .with('git', 'checkout', '-b', match(%r{\Ahiz/issue-\d+-[0-9a-f]{8}\z}), chdir: '/project')
+        .with('git', 'checkout', '-b', match(/\Ahiz-issue-\d+-[0-9a-f]{8}\z/), chdir: '/project')
     end
   end
 

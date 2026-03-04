@@ -120,7 +120,7 @@ module Ocak
       end
 
       def create_branch(issue_number, chdir)
-        branch = "hiz/issue-#{issue_number}-#{SecureRandom.hex(4)}"
+        branch = "hiz-issue-#{issue_number}-#{SecureRandom.hex(4)}"
         raise "Unsafe branch name: #{branch}" unless GitUtils.safe_branch_name?(branch)
 
         result = run_git('checkout', '-b', branch, chdir: chdir)
