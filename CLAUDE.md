@@ -87,6 +87,47 @@ All externally-sourced content embedded in agent prompts must be wrapped in XML 
 - `ProcessRegistry` is a thread-safe PID set (`Mutex` + `Set`). `ProcessRunner#run` registers PIDs after `popen3` spawn and unregisters in `ensure`. `ClaudeRunner` passes the registry through to `ProcessRunner`.
 - `PipelineExecutor` accepts a `shutdown_check:` callable and checks it between steps; if true, it sets `state[:interrupted]` and breaks out of the step loop without deleting `PipelineState`.
 
+## Multi-Repo Mode
+
+In multi-repo mode a "god repo" holds all the issues while agents run in separate target repos. This lets one Ocak instance manage work across many codebases.
+
+### Overview
+- Issues live in the god repo. Each issue specifies its target via YAML front-matter.
+- Agents run in worktrees of the target repo, not the god repo.
+- Labels and comments are posted back to the god repo's issue tracker.
+- PRs are created and merged in the target repo.
+
+### Issue Format
+Issues include a YAML front-matter block identifying the target repo:
+```
+---
+target_repo: my-service
+---
+```
+
+### User Config
+Repo name-to-path mappings live in `~/.config/ocak/config.yml` (machine-specific, never committed):
+```yaml
+repos:
+  my-service: /path/to/my-service
+  another-repo: /path/to/another-repo
+```
+
+### Flow
+1. `TargetResolver` parses the issue body front-matter to extract the `target_repo` name.
+2. `Config#resolve_repo` looks up the name in `repos:` from user config and returns the local path. Raises `TargetResolutionError` if the name is unknown.
+3. `BatchProcessing#resolve_targets` calls `TargetResolver` for each issue in the batch.
+4. `WorktreeManager` creates a worktree in the target repo directory (via `repo_dir:` param).
+5. Pipeline agents run with `chdir: worktree.path`, so all file operations and git commands apply to the target repo.
+6. `MergeManager` rebases, pushes, and creates the PR in the target repo.
+7. Issue labels and comments are posted to the god repo via `IssueFetcher`.
+
+### Key Files
+- `target_resolver.rb` — parses front-matter, validates repo name via `Config#resolve_repo`
+- `batch_processing.rb` — `resolve_targets` maps issues to target repo paths
+- `worktree_manager.rb` — accepts `repo_dir:` param for target repo path
+- `merge_manager.rb` — includes target repo context in PR body
+
 ## Development
 
 ```bash
