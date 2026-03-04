@@ -191,7 +191,7 @@ module Ocak
     end
 
     def detect_test_pass(output)
-      return true  if output.match?(/0 failures,\s*0 errors/)
+      return true  if output.match?(/\b0 failures\b/)
       return true  if output.match?(/no offenses detected/i)
       return true  if output.match?(/test result: ok/i) # cargo test
       return false if output.match?(/[1-9]\d* failures?/) || output.match?(/[1-9]\d* errors?/)

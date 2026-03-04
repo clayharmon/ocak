@@ -359,6 +359,22 @@ RSpec.describe Ocak::StreamParser do
       expect(result_for('test result: ok. 5 passed')[:passed]).to be true
     end
 
+    it 'detects rspec pass with 0 failures' do
+      expect(result_for('42 examples, 0 failures')[:passed]).to be true
+    end
+
+    it 'detects rspec pass with 0 failures and pending' do
+      expect(result_for('42 examples, 0 failures, 2 pending')[:passed]).to be true
+    end
+
+    it 'detects rspec failure with non-zero failures' do
+      expect(result_for('42 examples, 3 failures')[:passed]).to be false
+    end
+
+    it 'does not treat "10 failures" as passing due to word boundary' do
+      expect(result_for('10 failures')[:passed]).to be false
+    end
+
     it 'detects FAIL output' do
       expect(result_for('FAILED some test')[:passed]).to be false
     end
