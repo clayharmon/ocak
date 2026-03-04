@@ -255,6 +255,7 @@ RSpec.describe Ocak::PipelineExecutor do
 
     before do
       allow(config).to receive(:steps).and_return(steps_with_complexity)
+      allow(config).to receive(:audit_mode).and_return(true)
       allow(claude).to receive(:run_agent).and_return(success_result)
     end
 
@@ -727,6 +728,7 @@ RSpec.describe Ocak::PipelineExecutor do
         { 'agent' => 'auditor', 'role' => 'audit', 'complexity' => 'full' }
       ]
       allow(config).to receive(:steps).and_return(steps)
+      allow(config).to receive(:audit_mode).and_return(true)
 
       executor_with_issues.run_pipeline(42, logger: logger, claude: claude, complexity: 'simple')
 
