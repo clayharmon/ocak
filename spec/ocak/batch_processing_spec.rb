@@ -9,7 +9,7 @@ RSpec.describe Ocak::BatchProcessing do
     Class.new do
       include Ocak::BatchProcessing
 
-      public :process_issues, :run_batch, :process_one_issue, :build_issue_result
+      public :process_issues, :run_batch, :process_one_issue, :build_issue_result, :resolve_targets
 
       attr_accessor :shutting_down
 
@@ -40,12 +40,16 @@ RSpec.describe Ocak::BatchProcessing do
                     label_ready: 'auto-ready',
                     label_in_progress: 'in-progress',
                     label_failed: 'pipeline-failed',
-                    setup_command: nil)
+                    setup_command: nil,
+                    multi_repo?: false)
   end
   let(:logger) { instance_double(Ocak::PipelineLogger, info: nil, warn: nil, error: nil, debug: nil) }
   let(:issues) { instance_double(Ocak::IssueFetcher, transition: nil, comment: nil) }
   let(:executor) { double('executor') }
-  let(:worktree) { instance_double(Ocak::WorktreeManager::Worktree, path: '/worktrees/42', branch: 'auto/issue-42') }
+  let(:worktree) do
+    instance_double(Ocak::WorktreeManager::Worktree, path: '/worktrees/42', branch: 'auto/issue-42',
+                                                     target_repo: nil)
+  end
   let(:worktrees) { instance_double(Ocak::WorktreeManager, create: worktree, remove: nil) }
 
   subject(:instance) { test_class.new(config: config, executor: executor) }
@@ -99,6 +103,30 @@ RSpec.describe Ocak::BatchProcessing do
 
       expect(host).not_to have_received(:run_batch)
       expect(logger).to have_received(:info).with(/DRY RUN/)
+    end
+
+    context 'when multi_repo? is true' do
+      let(:multi_config) do
+        instance_double(Ocak::Config,
+                        max_issues_per_run: 3,
+                        max_parallel: 2,
+                        label_ready: 'auto-ready',
+                        label_in_progress: 'in-progress',
+                        label_failed: 'pipeline-failed',
+                        setup_command: nil,
+                        multi_repo?: true)
+      end
+
+      it 'calls resolve_targets before batching' do
+        host = test_class.new(config: multi_config, executor: executor)
+        allow(executor).to receive(:plan_batches).and_return([{ 'issues' => [ready_issue] }])
+        allow(host).to receive(:run_batch)
+        allow(host).to receive(:resolve_targets).and_return([ready_issue])
+
+        host.process_issues([ready_issue], logger: logger, issues: issues)
+
+        expect(host).to have_received(:resolve_targets).with([ready_issue], logger: logger)
+      end
     end
   end
 
@@ -156,6 +184,64 @@ RSpec.describe Ocak::BatchProcessing do
         { issue_number: 42, success: false, worktree: nil, programming_error: error }
       )
       expect { instance.run_batch([ready_issue], logger: logger, issues: issues) }.to raise_error(NoMethodError)
+    end
+
+    context 'when multi_repo? is false' do
+      it 'creates a shared WorktreeManager' do
+        instance.run_batch([ready_issue], logger: logger, issues: issues)
+        expect(Ocak::WorktreeManager).to have_received(:new).with(config: config, logger: logger)
+      end
+    end
+
+    context 'when multi_repo? is true' do
+      let(:multi_config) do
+        instance_double(Ocak::Config,
+                        max_issues_per_run: 3,
+                        max_parallel: 2,
+                        label_ready: 'auto-ready',
+                        label_in_progress: 'in-progress',
+                        label_failed: 'pipeline-failed',
+                        setup_command: nil,
+                        multi_repo?: true)
+      end
+
+      it 'passes worktrees: nil to process_one_issue so each thread creates its own' do
+        host = test_class.new(config: multi_config, executor: executor)
+        allow(host).to receive(:process_one_issue).and_return(
+          { issue_number: 42, success: true, worktree: worktree }
+        )
+        allow(host).to receive(:merge_completed_issue)
+        allow(host).to receive(:build_merge_manager).and_return(nil)
+        allow(Ocak::WorktreeManager).to receive(:new).and_return(worktrees)
+
+        host.run_batch([ready_issue], logger: logger, issues: issues)
+
+        expect(host).to have_received(:process_one_issue).with(ready_issue, worktrees: nil, issues: issues)
+      end
+
+      it 'creates a repo-specific WorktreeManager for worktree cleanup when target_repo is set' do
+        target_worktree = instance_double(
+          Ocak::WorktreeManager::Worktree,
+          path: '/dev/my-gem/.claude/worktrees/issue-42',
+          branch: 'auto/issue-42',
+          target_repo: { path: '/dev/my-gem' }
+        )
+        target_worktrees = instance_double(Ocak::WorktreeManager, remove: nil)
+        allow(Ocak::WorktreeManager).to receive(:new)
+          .with(config: multi_config, repo_dir: '/dev/my-gem', logger: logger)
+          .and_return(target_worktrees)
+
+        host = test_class.new(config: multi_config, executor: executor)
+        allow(host).to receive(:process_one_issue).and_return(
+          { issue_number: 42, success: true, worktree: target_worktree }
+        )
+        allow(host).to receive(:merge_completed_issue)
+        allow(host).to receive(:build_merge_manager).and_return(nil)
+
+        host.run_batch([ready_issue], logger: logger, issues: issues)
+
+        expect(target_worktrees).to have_received(:remove).with(target_worktree)
+      end
     end
   end
 
@@ -227,6 +313,36 @@ RSpec.describe Ocak::BatchProcessing do
       instance.process_one_issue(ready_issue, worktrees: worktrees, issues: issues)
       expect(active_issues).not_to include(42)
     end
+
+    context 'when issue has _target' do
+      let(:target) { { name: 'my-gem', path: '/dev/my-gem' } }
+      let(:target_issue) { { 'number' => 42, 'title' => 'Fix bug', '_target' => target } }
+      let(:target_worktrees) { instance_double(Ocak::WorktreeManager, create: worktree, remove: nil) }
+
+      before do
+        allow(Ocak::WorktreeManager).to receive(:new)
+          .with(config: config, repo_dir: '/dev/my-gem', logger: logger)
+          .and_return(target_worktrees)
+      end
+
+      it 'creates WorktreeManager with repo_dir from target' do
+        instance.process_one_issue(target_issue, worktrees: nil, issues: issues)
+        expect(Ocak::WorktreeManager).to have_received(:new)
+          .with(config: config, repo_dir: '/dev/my-gem', logger: logger)
+      end
+
+      it 'uses the target WorktreeManager to create worktree' do
+        instance.process_one_issue(target_issue, worktrees: nil, issues: issues)
+        expect(target_worktrees).to have_received(:create).with(42, setup_command: nil)
+      end
+    end
+
+    context 'when issue has no _target' do
+      it 'uses the shared worktrees instance' do
+        instance.process_one_issue(ready_issue, worktrees: worktrees, issues: issues)
+        expect(worktrees).to have_received(:create).with(42, setup_command: nil)
+      end
+    end
   end
 
   describe '#build_issue_result' do
@@ -277,6 +393,64 @@ RSpec.describe Ocak::BatchProcessing do
       outcome = instance.build_issue_result(result, issue_number: 42, worktree: worktree,
                                                     issues: issues, logger: logger)
       expect(outcome).to eq({ issue_number: 42, success: false, worktree: worktree })
+    end
+  end
+
+  describe '#resolve_targets' do
+    let(:issue1) { { 'number' => 1, 'title' => 'Issue 1' } }
+    let(:issue2) { { 'number' => 2, 'title' => 'Issue 2' } }
+    let(:target) { { name: 'my-gem', path: '/dev/my-gem' } }
+
+    it 'attaches resolved target to each issue' do
+      allow(Ocak::TargetResolver).to receive(:resolve).and_return(target)
+
+      result = instance.resolve_targets([issue1], logger: logger)
+
+      expect(result.first['_target']).to eq(target)
+    end
+
+    it 'returns all issues when all targets resolve successfully' do
+      allow(Ocak::TargetResolver).to receive(:resolve).and_return(target)
+
+      result = instance.resolve_targets([issue1, issue2], logger: logger)
+
+      expect(result.size).to eq(2)
+    end
+
+    it 'skips issues that raise TargetResolutionError' do
+      err = Ocak::TargetResolver::TargetResolutionError
+      allow(Ocak::TargetResolver).to receive(:resolve).with(issue1, config: config).and_raise(err, 'unknown')
+      allow(Ocak::TargetResolver).to receive(:resolve).with(issue2, config: config).and_return(target)
+
+      result = instance.resolve_targets([issue1, issue2], logger: logger)
+
+      expect(result.map { |i| i['number'] }).to eq([2])
+    end
+
+    it 'logs error when an issue is skipped' do
+      allow(Ocak::TargetResolver).to receive(:resolve)
+        .and_raise(Ocak::TargetResolver::TargetResolutionError, 'unknown repo')
+
+      instance.resolve_targets([issue1], logger: logger)
+
+      expect(logger).to have_received(:error).with(/Skipping issue #1/)
+    end
+
+    it 'returns empty array when all issues fail to resolve' do
+      allow(Ocak::TargetResolver).to receive(:resolve)
+        .and_raise(Ocak::TargetResolver::TargetResolutionError, 'unknown')
+
+      result = instance.resolve_targets([issue1, issue2], logger: logger)
+
+      expect(result).to be_empty
+    end
+
+    it 'attaches nil target when TargetResolver returns nil' do
+      allow(Ocak::TargetResolver).to receive(:resolve).and_return(nil)
+
+      result = instance.resolve_targets([issue1], logger: logger)
+
+      expect(result.first['_target']).to be_nil
     end
   end
 end
