@@ -52,6 +52,7 @@ RSpec.describe Ocak::MergeOrchestration do
   before do
     allow(issues).to receive(:transition)
     allow(issues).to receive(:pr_comment)
+    allow(issues).to receive(:view).and_return(nil)
   end
 
   describe '#merge_completed_issue' do

@@ -50,6 +50,8 @@ RSpec.describe Ocak::MergeManager do
       allow(Open3).to receive(:capture3)
         .with('git', 'status', '--porcelain', chdir: worktree.path)
         .and_return(['', '', success_status])
+      allow(issues).to receive(:view)
+        .and_return({ 'title' => 'Fix the bug', 'body' => 'Bug details' })
     end
 
     context 'when everything succeeds' do

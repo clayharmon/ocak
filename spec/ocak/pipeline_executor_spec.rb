@@ -416,6 +416,7 @@ RSpec.describe Ocak::PipelineExecutor do
     it 'posts skip comment with "audit found blocking issues" reason' do
       issues_fetcher = instance_double(Ocak::IssueFetcher)
       allow(issues_fetcher).to receive(:comment)
+      allow(issues_fetcher).to receive(:view).and_return(nil)
       executor_with_issues = described_class.new(config: config, issues: issues_fetcher)
 
       block_result = Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'BLOCK: issue')
@@ -531,7 +532,7 @@ RSpec.describe Ocak::PipelineExecutor do
   end
 
   describe 'progress comments' do
-    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher, view: nil) }
     let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
     let(:result_with_cost) do
       Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Done', cost_usd: 0.012, duration_ms: 45_000)
@@ -611,7 +612,7 @@ RSpec.describe Ocak::PipelineExecutor do
   end
 
   describe 'final verification comments' do
-    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher, view: nil) }
     let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
 
     before do
@@ -647,7 +648,7 @@ RSpec.describe Ocak::PipelineExecutor do
   end
 
   describe 'pipeline start comment' do
-    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher, view: nil) }
     let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
 
     before do
@@ -679,7 +680,7 @@ RSpec.describe Ocak::PipelineExecutor do
   end
 
   describe 'skip reason comments' do
-    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher, view: nil) }
     let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
 
     before do
@@ -736,7 +737,7 @@ RSpec.describe Ocak::PipelineExecutor do
   end
 
   describe 'retry comment' do
-    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher, view: nil) }
     let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
 
     before do
@@ -770,7 +771,7 @@ RSpec.describe Ocak::PipelineExecutor do
   end
 
   describe 'pipeline summary comment' do
-    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher, view: nil) }
     let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
     let(:result_with_cost) do
       Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'Done', cost_usd: 0.10, duration_ms: 30_000)
@@ -1131,7 +1132,7 @@ RSpec.describe Ocak::PipelineExecutor do
   end
 
   describe 'comment suppression' do
-    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher, view: nil) }
     let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
 
     before do
@@ -1163,7 +1164,7 @@ RSpec.describe Ocak::PipelineExecutor do
   end
 
   describe 'verification_model parameter' do
-    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher) }
+    let(:issues_fetcher) { instance_double(Ocak::IssueFetcher, view: nil) }
     let(:executor_with_issues) { described_class.new(config: config, issues: issues_fetcher) }
 
     before do

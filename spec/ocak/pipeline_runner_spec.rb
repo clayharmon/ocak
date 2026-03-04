@@ -56,6 +56,7 @@ RSpec.describe Ocak::PipelineRunner do
     allow(FileUtils).to receive(:mkdir_p)
     allow(issues).to receive(:ensure_labels)
     allow(issues).to receive(:comment)
+    allow(issues).to receive(:view).and_return(nil)
   end
 
   describe 'single issue mode' do
