@@ -11,6 +11,27 @@ RSpec.describe Ocak::WorktreeManager do
 
   subject(:manager) { described_class.new(config: config) }
 
+  describe '#initialize' do
+    it 'uses config.project_dir when repo_dir is not provided' do
+      expect(manager.instance_variable_get(:@repo_dir)).to eq('/project')
+    end
+
+    it 'uses repo_dir when provided' do
+      manager_with_repo_dir = described_class.new(config: config, repo_dir: '/dev/my-gem')
+      expect(manager_with_repo_dir.instance_variable_get(:@repo_dir)).to eq('/dev/my-gem')
+    end
+
+    it 'uses repo_dir for worktree_base when provided' do
+      manager_with_repo_dir = described_class.new(config: config, repo_dir: '/dev/my-gem')
+      expect(manager_with_repo_dir.instance_variable_get(:@worktree_base)).to eq('/dev/my-gem/.claude/worktrees')
+    end
+
+    it 'falls back to config.project_dir when repo_dir is nil' do
+      manager_with_nil = described_class.new(config: config, repo_dir: nil)
+      expect(manager_with_nil.instance_variable_get(:@repo_dir)).to eq('/project')
+    end
+  end
+
   describe '#create' do
     it 'creates a worktree with the correct branch naming' do
       allow(FileUtils).to receive(:mkdir_p)
@@ -63,6 +84,43 @@ RSpec.describe Ocak::WorktreeManager do
       expect(worktree.path).to eq('/project/.claude/worktrees/issue-42')
       expect(Open3).to have_received(:capture3)
         .with('bundle', 'install', chdir: '/project/.claude/worktrees/issue-42')
+    end
+
+    it 'returns a Worktree with target_repo when provided' do
+      allow(FileUtils).to receive(:mkdir_p)
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'add', '-b', anything, anything, 'main', chdir: '/project')
+        .and_return(['', '', instance_double(Process::Status, success?: true)])
+
+      target_repo = { name: 'my-gem', path: '/dev/my-gem' }
+      worktree = manager.create(42, target_repo: target_repo)
+
+      expect(worktree.target_repo).to eq(target_repo)
+    end
+
+    it 'returns a Worktree with nil target_repo when not provided' do
+      allow(FileUtils).to receive(:mkdir_p)
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'add', '-b', anything, anything, 'main', chdir: '/project')
+        .and_return(['', '', instance_double(Process::Status, success?: true)])
+
+      worktree = manager.create(42)
+
+      expect(worktree.target_repo).to be_nil
+    end
+
+    it 'uses repo_dir as chdir for git commands' do
+      manager_with_repo_dir = described_class.new(config: config, repo_dir: '/dev/my-gem')
+      allow(FileUtils).to receive(:mkdir_p)
+      allow(Open3).to receive(:capture3)
+        .with('git', 'worktree', 'add', '-b', anything, anything, 'main', chdir: '/dev/my-gem')
+        .and_return(['', '', instance_double(Process::Status, success?: true)])
+
+      worktree = manager_with_repo_dir.create(42)
+
+      expect(worktree.path).to eq('/dev/my-gem/.claude/worktrees/issue-42')
+      expect(Open3).to have_received(:capture3)
+        .with('git', 'worktree', 'add', '-b', anything, anything, 'main', chdir: '/dev/my-gem')
     end
 
     it 'raises when setup command fails' do
