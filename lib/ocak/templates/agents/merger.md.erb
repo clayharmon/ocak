@@ -24,6 +24,15 @@ Only re-run tests if you had to resolve merge conflicts or edit files:
 <%- if lint_command -%>
 <%= lint_command %>
 <%- end -%>
+<%- unless test_command || lint_command -%>
+# No specific test/lint commands configured. Detect from project structure:
+# - Gemfile → bundle exec rspec (or bundle exec rake test)
+# - package.json → npm test
+# - Cargo.toml → cargo test
+# - go.mod → go test ./...
+# - pyproject.toml / setup.py → pytest
+# Read the project's CLAUDE.md for additional conventions.
+<%- end -%>
 ```
 
 If anything fails after conflict resolution, STOP and report the failures. Do not create a PR with failing checks.
@@ -62,6 +71,9 @@ Closes #<issue-number>
 <%- end -%>
 <%- if lint_command -%>
 - `<%= lint_command %>` — passed
+<%- end -%>
+<%- unless test_command || lint_command -%>
+- Stack auto-detected from project structure; commands detected at runtime
 <%- end -%>
 EOF
 )"

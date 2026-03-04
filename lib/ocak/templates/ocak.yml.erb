@@ -27,6 +27,11 @@ stack:
 <%- end -%>
 <%- end -%>
 
+# Multi-repo mode — process issues across multiple local repos
+# Repo path mappings go in ~/.config/ocak/config.yml (machine-specific, not committed)
+# multi_repo: true
+# target_field: target_repo   # YAML front-matter field in issue body
+
 # Issue backend — 'github' (default) or 'local'
 # Local mode stores issues as files in .ocak/issues/ (no gh CLI needed for issues).
 # Auto-detected: if .ocak/issues/ contains .md files, local mode is used automatically.

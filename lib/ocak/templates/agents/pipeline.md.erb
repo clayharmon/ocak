@@ -33,6 +33,15 @@ gh issue view <number> --json title,body,labels
 <%- if test_command -%>
    - `<%= test_command %>`
 <%- end -%>
+<%- unless lint_command || test_command -%>
+   - No specific commands configured. Detect from project structure:
+     - Gemfile → bundle exec rspec (or bundle exec rake test)
+     - package.json → npm test
+     - Cargo.toml → cargo test
+     - go.mod → go test ./...
+     - pyproject.toml / setup.py → pytest
+   - Read the project's CLAUDE.md for additional conventions.
+<%- end -%>
 
 ### Phase 2: Self-Review
 
@@ -87,6 +96,15 @@ Run the complete check suite one last time:
 <%- end -%>
 <%- if test_command -%>
 <%= test_command %>
+<%- end -%>
+<%- unless lint_command || test_command -%>
+# No specific commands configured. Detect from project structure:
+# - Gemfile → bundle exec rspec (or bundle exec rake test)
+# - package.json → npm test
+# - Cargo.toml → cargo test
+# - go.mod → go test ./...
+# - pyproject.toml / setup.py → pytest
+# Read the project's CLAUDE.md for additional conventions.
 <%- end -%>
 ```
 
