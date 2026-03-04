@@ -26,6 +26,7 @@ module Ocak
 
     def plan_batches(issues, logger:, claude:)
       return sequential_batches(issues) if issues.size <= 1
+      return plan_multi_repo_batches(issues) if @config&.multi_repo?
 
       issue_json = JSON.generate(issues.map { |i| { number: i['number'], title: i['title'] } })
       result = claude.run_agent(
@@ -39,6 +40,20 @@ module Ocak
       end
 
       parse_planner_output(result.output, issues, logger)
+    end
+
+    def plan_multi_repo_batches(issues)
+      by_repo = issues.group_by { |i| i['_target']&.dig(:name) || '__self__' }
+
+      # If all issues target different repos, one big parallel batch — no agent call needed
+      return [{ 'batch' => 1, 'issues' => issues }] if by_repo.values.all? { |group| group.size == 1 }
+
+      # Otherwise, issues in the same repo are sequential (by depth), cross-repo are parallel
+      max_depth = by_repo.values.map(&:size).max
+      (0...max_depth).map do |depth|
+        batch_issues = by_repo.values.filter_map { |group| group[depth] }
+        { 'batch' => depth + 1, 'issues' => batch_issues }
+      end
     end
 
     def parse_planner_output(output, issues, logger)

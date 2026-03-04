@@ -14,6 +14,7 @@ RSpec.describe Ocak::PipelineExecutor do
                     lint_check_command: nil,
                     manual_review: false,
                     audit_mode: false,
+                    multi_repo?: false,
                     language: 'ruby',
                     steps: [
                       { 'agent' => 'implementer', 'role' => 'implement' },

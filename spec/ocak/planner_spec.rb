@@ -82,6 +82,90 @@ RSpec.describe Ocak::Planner do
         expect(batches[1]['batch']).to eq(2)
       end
     end
+
+    context 'in multi-repo mode' do
+      let(:config) { double('config', multi_repo?: true) }
+      let(:multi_repo_host) do
+        cfg = config
+        Class.new { include Ocak::Planner }.new.tap { |h| h.instance_variable_set(:@config, cfg) }
+      end
+
+      it 'returns sequential batch for single issue without calling planner agent' do
+        issues = [{ 'number' => 1, 'title' => 'Fix', '_target' => { name: 'repo-a', path: '/a' } }]
+        allow(claude).to receive(:run_agent)
+
+        result = multi_repo_host.plan_batches(issues, logger: logger, claude: claude)
+
+        expect(result).to eq([{ 'batch' => 1, 'issues' => [{ 'number' => 1, 'title' => 'Fix',
+                                                             '_target' => { name: 'repo-a', path: '/a' },
+                                                             'complexity' => 'full' }] }])
+        expect(claude).not_to have_received(:run_agent)
+      end
+
+      it 'returns single batch when all issues target different repos, without calling planner agent' do
+        issues = [
+          { 'number' => 1, 'title' => 'Fix A', '_target' => { name: 'repo-a', path: '/a' } },
+          { 'number' => 2, 'title' => 'Fix B', '_target' => { name: 'repo-b', path: '/b' } },
+          { 'number' => 3, 'title' => 'Fix C', '_target' => { name: 'repo-c', path: '/c' } }
+        ]
+        allow(claude).to receive(:run_agent)
+
+        result = multi_repo_host.plan_batches(issues, logger: logger, claude: claude)
+
+        expect(result.size).to eq(1)
+        expect(result[0]['batch']).to eq(1)
+        expect(result[0]['issues']).to eq(issues)
+        expect(claude).not_to have_received(:run_agent)
+      end
+
+      it 'returns 2 batches when 2 issues target repo A and 1 targets repo B' do
+        issue_a1 = { 'number' => 1, 'title' => 'Fix A1', '_target' => { name: 'repo-a', path: '/a' } }
+        issue_a2 = { 'number' => 2, 'title' => 'Fix A2', '_target' => { name: 'repo-a', path: '/a' } }
+        issue_b  = { 'number' => 3, 'title' => 'Fix B',  '_target' => { name: 'repo-b', path: '/b' } }
+        issues = [issue_a1, issue_a2, issue_b]
+
+        result = multi_repo_host.plan_batches(issues, logger: logger, claude: claude)
+
+        expect(result.size).to eq(2)
+        expect(result[0]['batch']).to eq(1)
+        expect(result[0]['issues']).to include(issue_a1, issue_b)
+        expect(result[1]['batch']).to eq(2)
+        expect(result[1]['issues']).to eq([issue_a2])
+      end
+
+      it 'treats issues with nil _target as targeting the same implicit repo' do
+        issue1 = { 'number' => 1, 'title' => 'A' }
+        issue2 = { 'number' => 2, 'title' => 'B' }
+        issues = [issue1, issue2]
+
+        result = multi_repo_host.plan_batches(issues, logger: logger, claude: claude)
+
+        expect(result.size).to eq(2)
+        expect(result[0]['issues']).to eq([issue1])
+        expect(result[1]['issues']).to eq([issue2])
+      end
+    end
+
+    context 'when multi_repo? is false' do
+      let(:config) { double('config', multi_repo?: false) }
+      let(:single_repo_host) do
+        cfg = config
+        Class.new { include Ocak::Planner }.new.tap { |h| h.instance_variable_set(:@config, cfg) }
+      end
+
+      it 'uses existing planner agent logic' do
+        issues = [{ 'number' => 1, 'title' => 'Fix bug' }, { 'number' => 2, 'title' => 'Add feature' }]
+        batch_json = '{"batches": [{"batch": 1, "issues": [{"number": 1}, {"number": 2}]}]}'
+        result = Ocak::ClaudeRunner::AgentResult.new(success: true, output: batch_json)
+
+        allow(claude).to receive(:run_agent).with('planner', anything).and_return(result)
+
+        batches = single_repo_host.plan_batches(issues, logger: logger, claude: claude)
+
+        expect(claude).to have_received(:run_agent)
+        expect(batches).to eq([{ 'batch' => 1, 'issues' => [{ 'number' => 1 }, { 'number' => 2 }] }])
+      end
+    end
   end
 
   describe '#parse_planner_output' do
