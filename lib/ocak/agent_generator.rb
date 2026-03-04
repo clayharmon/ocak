@@ -158,13 +158,17 @@ module Ocak
     end
 
     def claude_available?
-      result = run_command('which', 'claude')
-      @logger&.warn("Claude CLI not found: #{result.error}") if result.status.nil?
-      result.success?
+      # Uses Open3 directly; 'which' is not a git/gh command
+      _, _, status = Open3.capture3('which', 'claude')
+      status.success?
+    rescue Errno::ENOENT => e
+      @logger&.warn("Claude CLI not found: #{e.message}")
+      false
     end
 
     def run_claude_prompt(prompt)
-      result = run_command(
+      # Uses Open3 directly; 'claude' is not a git/gh command
+      stdout, _, status = Open3.capture3(
         'claude', '-p',
         '--output-format', 'text',
         '--model', ClaudeRunner::MODEL_HAIKU,
@@ -172,11 +176,10 @@ module Ocak
         '--', prompt,
         chdir: @project_dir
       )
-      if result.status.nil?
-        @logger&.warn("Failed to run Claude prompt: #{result.error}")
-        return nil
-      end
-      result.success? ? result.stdout : nil
+      status.success? ? stdout : nil
+    rescue Errno::ENOENT => e
+      @logger&.warn("Failed to run Claude prompt: #{e.message}")
+      nil
     end
   end
 end
