@@ -25,7 +25,17 @@ RSpec.describe Ocak::MergeManager do
     Ocak::WorktreeManager::Worktree.new(
       path: '/project/.claude/worktrees/issue-42',
       branch: 'auto/issue-42-abc123',
-      issue_number: 42
+      issue_number: 42,
+      target_repo: nil
+    )
+  end
+
+  let(:cross_repo_worktree) do
+    Ocak::WorktreeManager::Worktree.new(
+      path: '/project/.claude/worktrees/issue-42',
+      branch: 'auto/issue-42-abc123',
+      issue_number: 42,
+      target_repo: { name: 'my-gem', path: '/path/to/my-gem' }
     )
   end
 
@@ -355,6 +365,65 @@ RSpec.describe Ocak::MergeManager do
       end
     end
 
+    context 'with cross-repo worktree' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', cross_repo_worktree.branch, chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(claude).to receive(:run_agent)
+          .and_return(Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'PR created and merged'))
+      end
+
+      it 'passes "Do NOT close" in the merger agent prompt' do
+        expect(claude).to receive(:run_agent)
+          .with('merger', /Do NOT close/, chdir: cross_repo_worktree.path)
+
+        manager.merge(42, cross_repo_worktree)
+      end
+
+      it 'does not include "close issue" in the merger agent prompt' do
+        expect(claude).to receive(:run_agent)
+          .with('merger', satisfy { |p| !p.include?('close issue') }, chdir: cross_repo_worktree.path)
+
+        manager.merge(42, cross_repo_worktree)
+      end
+    end
+
+    context 'with single-repo worktree' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(claude).to receive(:run_agent)
+          .and_return(Ocak::ClaudeRunner::AgentResult.new(success: true, output: 'PR created and merged'))
+      end
+
+      it 'includes "close issue" in the merger agent prompt' do
+        expect(claude).to receive(:run_agent)
+          .with('merger', /close issue #42/, chdir: worktree.path)
+
+        manager.merge(42, worktree)
+      end
+    end
+
     context 'when git fetch origin main fails' do
       before do
         allow(Open3).to receive(:capture3)
@@ -558,6 +627,126 @@ RSpec.describe Ocak::MergeManager do
 
       it 'returns nil' do
         expect(manager.create_pr_only(42, worktree)).to be_nil
+      end
+    end
+
+    context 'with cross-repo worktree and repo_nwo returns the god repo' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'status', '--porcelain', chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', cross_repo_worktree.branch, chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title')
+          .and_return({ 'title' => 'Fix the bug' })
+        allow(issues).to receive(:repo_nwo).and_return('clayharmon/god-repo')
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
+                '--head', cross_repo_worktree.branch, chdir: cross_repo_worktree.path)
+          .and_return(["https://github.com/owner/my-gem/pull/10\n", '', success_status])
+      end
+
+      it 'returns the PR number' do
+        expect(manager.create_pr_only(42, cross_repo_worktree)).to eq(10)
+      end
+
+      it 'uses "Related to org/repo#N" in the PR body' do
+        expect(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'create', '--title', anything, '--body', %r{Related to clayharmon/god-repo#42},
+                '--head', cross_repo_worktree.branch, chdir: cross_repo_worktree.path)
+          .and_return(["https://github.com/owner/my-gem/pull/10\n", '', success_status])
+
+        manager.create_pr_only(42, cross_repo_worktree)
+      end
+
+      it 'does not use "Closes #N" in the PR body' do
+        expect(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'create', '--title', anything, '--body', satisfy { |b| !b.include?('Closes #') },
+                '--head', cross_repo_worktree.branch, chdir: cross_repo_worktree.path)
+          .and_return(["https://github.com/owner/my-gem/pull/10\n", '', success_status])
+
+        manager.create_pr_only(42, cross_repo_worktree)
+      end
+    end
+
+    context 'with cross-repo worktree and repo_nwo returns nil' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'status', '--porcelain', chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', cross_repo_worktree.branch, chdir: cross_repo_worktree.path)
+          .and_return(['', '', success_status])
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title')
+          .and_return({ 'title' => 'Fix the bug' })
+        allow(issues).to receive(:repo_nwo).and_return(nil)
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
+                '--head', cross_repo_worktree.branch, chdir: cross_repo_worktree.path)
+          .and_return(["https://github.com/owner/my-gem/pull/10\n", '', success_status])
+      end
+
+      it 'falls back to bare "#N" reference in the PR body' do
+        expect(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'create', '--title', anything, '--body', /Related to #42/,
+                '--head', cross_repo_worktree.branch, chdir: cross_repo_worktree.path)
+          .and_return(["https://github.com/owner/my-gem/pull/10\n", '', success_status])
+
+        manager.create_pr_only(42, cross_repo_worktree)
+      end
+    end
+
+    context 'with single-repo worktree' do
+      before do
+        allow(Open3).to receive(:capture3)
+          .with('git', 'fetch', 'origin', 'main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'rebase', 'origin/main', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('bundle', 'exec', 'rspec', chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(Open3).to receive(:capture3)
+          .with('git', 'push', '-u', 'origin', worktree.branch, chdir: worktree.path)
+          .and_return(['', '', success_status])
+        allow(issues).to receive(:view)
+          .with(42, fields: 'title')
+          .and_return({ 'title' => 'Fix the bug' })
+        allow(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'create', '--title', anything, '--body', anything,
+                '--head', worktree.branch, chdir: worktree.path)
+          .and_return(["https://github.com/owner/repo/pull/99\n", '', success_status])
+      end
+
+      it 'uses "Closes #N" in the PR body' do
+        expect(Open3).to receive(:capture3)
+          .with('gh', 'pr', 'create', '--title', anything, '--body', /Closes #42/,
+                '--head', worktree.branch, chdir: worktree.path)
+          .and_return(["https://github.com/owner/repo/pull/99\n", '', success_status])
+
+        manager.create_pr_only(42, worktree)
       end
     end
   end

@@ -40,7 +40,7 @@ module Ocak
 
       result = @claude.run_agent(
         'merger',
-        "Create a PR, merge it, and close issue ##{issue_number}. Branch: #{worktree.branch}",
+        merger_prompt(issue_number, worktree),
         chdir: worktree.path
       )
 
@@ -68,6 +68,15 @@ module Ocak
 
     private
 
+    def merger_prompt(issue_number, worktree)
+      if worktree.target_repo
+        "Create a PR and merge it for issue ##{issue_number}. Branch: #{worktree.branch}. " \
+          'Do NOT close any issues (the issue lives in a different repository).'
+      else
+        "Create a PR, merge it, and close issue ##{issue_number}. Branch: #{worktree.branch}"
+      end
+    end
+
     def log_and_nil(message)
       @logger.error(message)
       nil
@@ -76,7 +85,14 @@ module Ocak
     def open_pull_request(issue_number, worktree)
       issue_title = fetch_issue_title(issue_number)
       pr_title = "Fix ##{issue_number}: #{issue_title}"
-      pr_body = "Closes ##{issue_number}\n\n" \
+      issue_ref = if worktree.target_repo
+                    god_nwo = @issues.repo_nwo
+                    ref = god_nwo ? "#{god_nwo}##{issue_number}" : "##{issue_number}"
+                    "Related to #{ref}"
+                  else
+                    "Closes ##{issue_number}"
+                  end
+      pr_body = "#{issue_ref}\n\n" \
                 '_This PR was created in manual review mode. ' \
                 'Review and label `auto-reready` to trigger automated fixes based on your feedback._'
 
